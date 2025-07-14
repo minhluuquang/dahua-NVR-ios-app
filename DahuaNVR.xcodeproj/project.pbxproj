@@ -29,9 +29,22 @@
 		B367A7762E241C7E00DFC31C /* DahuaNVRUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DahuaNVRUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		B3C221BF2E2502630004748F /* Exceptions for "DahuaNVR" folder in "DahuaNVR" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = B367A75E2E241C7D00DFC31C /* DahuaNVR */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		B367A7612E241C7D00DFC31C /* DahuaNVR */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B3C221BF2E2502630004748F /* Exceptions for "DahuaNVR" folder in "DahuaNVR" target */,
+			);
 			path = DahuaNVR;
 			sourceTree = "<group>";
 		};
@@ -398,7 +411,8 @@
 				DEVELOPMENT_TEAM = 2UJT96379T;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES;
+				INFOPLIST_FILE = DahuaNVR/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = Something;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -427,7 +441,8 @@
 				DEVELOPMENT_TEAM = 2UJT96379T;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES;
+				INFOPLIST_FILE = DahuaNVR/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = Something;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

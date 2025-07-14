@@ -43,3 +43,6 @@ This project uses the modern **Swift Testing** framework (not XCTest). Tests are
 - Project format: Xcode project (`.xcodeproj`)
 - The app is currently in its initial state with basic SwiftUI template code
 - Three main targets: DahuaNVR (app), DahuaNVRTests (unit tests), DahuaNVRUITests (UI tests)
+
+## Important Guidelines
+- Never update anything in @DahuaNVR.xcodeproj/project.pbxproj file
