@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsDashboardView: View {
     @EnvironmentObject private var authService: DahuaNVRAuthService
+    @EnvironmentObject private var contentViewModel: ContentViewModel
     @State private var showingLogoutAlert = false
     
     var body: some View {
@@ -38,7 +39,9 @@ struct SettingsDashboardView: View {
             .alert("Logout", isPresented: $showingLogoutAlert) {
                 Button("Cancel", role: .cancel) { }
                 Button("Logout", role: .destructive) {
-                    authService.logout()
+                    Task {
+                        await contentViewModel.logout()
+                    }
                 }
             } message: {
                 Text("Are you sure you want to logout?")
@@ -212,4 +215,5 @@ struct LiveViewPlaceholder: View {
 #Preview {
     SettingsDashboardView()
         .environmentObject(DahuaNVRAuthService())
+        .environmentObject(ContentViewModel())
 }

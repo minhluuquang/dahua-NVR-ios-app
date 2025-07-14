@@ -1,6 +1,6 @@
 import Foundation
 
-struct NVRCredentials {
+struct NVRCredentials: Codable {
     let serverURL: String
     let username: String
     let password: String

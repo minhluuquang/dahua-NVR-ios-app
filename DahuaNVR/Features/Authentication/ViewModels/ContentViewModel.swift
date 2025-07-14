@@ -1,21 +1,35 @@
 import Foundation
 import SwiftUI
+import Combine
 
 @MainActor
 class ContentViewModel: ObservableObject {
     @Published var isAuthenticated = false
+    @Published var isInitializing = true
     
-    private let authService: DahuaNVRAuthService
+    private let authManager = AuthenticationManager.shared
+    private var cancellables = Set<AnyCancellable>()
     
-    init(authService: DahuaNVRAuthService) {
-        self.authService = authService
-        
-        // Observe auth service changes
-        authService.$isAuthenticated
-            .assign(to: &$isAuthenticated)
+    init() {
+        bindAuthManager()
+        initializeAuth()
     }
     
-    func getAuthService() -> DahuaNVRAuthService {
-        return authService
+    private func bindAuthManager() {
+        authManager.$authenticationState
+            .map { $0 == .authenticated }
+            .assign(to: \.isAuthenticated, on: self)
+            .store(in: &cancellables)
+    }
+    
+    private func initializeAuth() {
+        Task {
+            await authManager.attemptAutoLogin()
+            isInitializing = false
+        }
+    }
+    
+    func logout() async {
+        await authManager.logout()
     }
 }

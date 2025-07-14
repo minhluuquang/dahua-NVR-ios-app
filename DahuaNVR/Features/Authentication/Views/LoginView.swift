@@ -2,7 +2,6 @@ import SwiftUI
 
 struct LoginView: View {
     @StateObject private var viewModel: LoginViewModel
-    @EnvironmentObject private var authService: DahuaNVRAuthService
     
     init(viewModel: LoginViewModel) {
         self._viewModel = StateObject(wrappedValue: viewModel)
@@ -90,6 +89,20 @@ struct LoginView: View {
                 .disabled(!viewModel.isFormValid || viewModel.isLoading)
                 .padding(.horizontal)
                 .padding(.top, 20)
+                
+                if viewModel.hasPersistedCredentials {
+                    Button(action: {
+                        viewModel.loadPersistedCredentials()
+                    }) {
+                        HStack {
+                            Image(systemName: "key.fill")
+                            Text("Load Saved Credentials")
+                        }
+                        .font(.footnote)
+                        .foregroundColor(.blue)
+                    }
+                    .padding(.top, 8)
+                }
 
                 if let errorMessage = viewModel.errorMessage {
                     Text(errorMessage)
@@ -131,7 +144,5 @@ struct LoginView: View {
 }
 
 #Preview {
-    let authService = DahuaNVRAuthService()
-    LoginView(viewModel: LoginViewModel(authService: authService))
-        .environmentObject(authService)
+    LoginView(viewModel: LoginViewModel())
 }

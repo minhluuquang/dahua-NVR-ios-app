@@ -8,24 +8,26 @@
 import SwiftUI
 
 struct ContentView: View {
+    @StateObject private var viewModel = ContentViewModel()
+    @StateObject private var loginViewModel = LoginViewModel()
     @StateObject private var authService = DahuaNVRAuthService()
-    @StateObject private var viewModel: ContentViewModel
-    
-    init() {
-        let authService = DahuaNVRAuthService()
-        self._authService = StateObject(wrappedValue: authService)
-        self._viewModel = StateObject(wrappedValue: ContentViewModel(authService: authService))
-    }
     
     var body: some View {
         Group {
-            if viewModel.isAuthenticated {
+            if viewModel.isInitializing {
+                ProgressView("Initializing...")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(.systemBackground))
+            } else if viewModel.isAuthenticated {
                 SettingsDashboardView()
                     .environmentObject(authService)
+                    .environmentObject(viewModel)
             } else {
-                LoginView(viewModel: LoginViewModel(authService: authService))
-                    .environmentObject(authService)
+                LoginView(viewModel: loginViewModel)
             }
+        }
+        .task {
+            await loginViewModel.attemptAutoLogin()
         }
     }
 }

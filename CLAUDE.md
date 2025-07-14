@@ -25,9 +25,22 @@ xcodebuild test -project DahuaNVR.xcodeproj -scheme DahuaNVR -destination 'platf
 
 ## Project Structure
 - **DahuaNVR/**: Main app source code
-  - `DahuaNVRApp.swift`: Main app entry point with `@main` attribute
-  - `ContentView.swift`: Primary SwiftUI view (currently a basic "Hello, world!" placeholder)
-  - `Assets.xcassets/`: App icons and visual assets
+  - **App/**: Application entry point
+    - `DahuaNVRApp.swift`: Main app entry point with `@main` attribute
+  - **Configuration/**: App configuration
+    - `AppConfiguration.swift`: Application configuration settings
+  - **Features/**: Feature-based organization
+    - **Authentication/**: User authentication system
+      - **Models/**: Authentication data models (`AuthenticationState`, `NVRCredentials`, `PersistedAuthData`)
+      - **Services/**: Authentication services (`AuthenticationManager`, `DahuaNVRAuthService`, `KeychainHelper`)
+      - **ViewModels/**: Authentication view models (`ContentViewModel`, `LoginViewModel`)
+      - **Views/**: Authentication UI (`ContentView`, `LoginView`)
+    - **Settings/**: Application settings
+      - **Views/**: Settings UI components (`SettingsDashboardView`, various settings views)
+    - **Shared/**: Shared UI components
+      - **Views/**: Reusable UI components (`SettingsRowView`)
+  - **Assets.xcassets/**: App icons and visual assets
+  - `Info.plist`: App configuration plist
 - **DahuaNVRTests/**: Unit tests using Swift Testing framework
 - **DahuaNVRUITests/**: UI automation tests
 
@@ -41,7 +54,9 @@ This project uses the modern **Swift Testing** framework (not XCTest). Tests are
 - Target platform: iOS
 - UI Framework: SwiftUI
 - Project format: Xcode project (`.xcodeproj`)
-- The app is currently in its initial state with basic SwiftUI template code
+- Architecture: Feature-based modular organization with MVVM pattern
+- Authentication system implemented with keychain storage
+- Settings dashboard with multiple configuration views
 - Three main targets: DahuaNVR (app), DahuaNVRTests (unit tests), DahuaNVRUITests (UI tests)
 
 ## Important Guidelines

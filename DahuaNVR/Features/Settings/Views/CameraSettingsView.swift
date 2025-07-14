@@ -77,28 +77,57 @@ enum CameraSettingsSection: CaseIterable {
 }
 
 struct CameraListView: View {
-    @State private var cameras: [CameraDevice] = [
-        CameraDevice(id: 1, name: "Front Door", status: .online, ipAddress: "192.168.1.100"),
-        CameraDevice(id: 2, name: "Back Yard", status: .online, ipAddress: "192.168.1.101"),
-        CameraDevice(id: 3, name: "Garage", status: .offline, ipAddress: "192.168.1.102")
-    ]
+    @StateObject private var cameraAPIService = CameraAPIService()
     @State private var showingAddCamera = false
     @State private var showingSearchDevices = false
     
     var body: some View {
-        List {
-            ForEach(cameras) { camera in
-                NavigationLink(destination: CameraDetailView(camera: camera)) {
-                    CameraCardView(camera: camera)
+        Group {
+            if cameraAPIService.isLoading {
+                ProgressView("Loading cameras...")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let errorMessage = cameraAPIService.errorMessage {
+                VStack(spacing: 16) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 48))
+                        .foregroundColor(.orange)
+                    
+                    Text("Error Loading Cameras")
+                        .font(.headline)
+                    
+                    Text(errorMessage)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                    
+                    Button("Retry") {
+                        Task {
+                            await cameraAPIService.fetchCameras()
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .padding()
+            } else {
+                List {
+                    ForEach(cameraAPIService.cameras) { nvrCamera in
+                        NavigationLink(destination: NVRCameraDetailView(camera: nvrCamera)) {
+                            NVRCameraCardView(camera: nvrCamera)
+                        }
+                    }
                 }
             }
-            .onDelete(perform: deleteCameras)
         }
         .navigationTitle("Camera List")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
+                    Button("Refresh") {
+                        Task {
+                            await cameraAPIService.fetchCameras()
+                        }
+                    }
                     Button("Add Device") {
                         showingAddCamera = true
                     }
@@ -106,20 +135,156 @@ struct CameraListView: View {
                         showingSearchDevices = true
                     }
                 } label: {
-                    Image(systemName: "plus")
+                    Image(systemName: "ellipsis.circle")
                 }
             }
         }
         .sheet(isPresented: $showingAddCamera) {
-            AddCameraView(cameras: $cameras)
+            AddCameraView()
         }
         .sheet(isPresented: $showingSearchDevices) {
             SearchDevicesView()
         }
+        .task {
+            await cameraAPIService.fetchCameras()
+        }
     }
     
-    private func deleteCameras(offsets: IndexSet) {
-        cameras.remove(atOffsets: offsets)
+}
+
+struct NVRCameraCardView: View {
+    let camera: NVRCamera
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "video.fill")
+                    .foregroundColor(.blue)
+                
+                Text(camera.name)
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                
+                Spacer()
+                
+                StatusIndicator(status: camera.enable ? .online : .offline)
+            }
+            
+            HStack {
+                Text("IP: \(camera.deviceInfo.address)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                Spacer()
+                
+                Text("Port: \(camera.deviceInfo.httpPort)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            HStack {
+                Text("Channel: \(camera.uniqueChannel)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                Spacer()
+                
+                Text(camera.deviceInfo.deviceType)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+struct NVRCameraDetailView: View {
+    let camera: NVRCamera
+    
+    var body: some View {
+        Form {
+            Section("Camera Information") {
+                HStack {
+                    Text("Name")
+                    Spacer()
+                    Text(camera.name)
+                        .foregroundColor(.secondary)
+                }
+                
+                HStack {
+                    Text("Status")
+                    Spacer()
+                    StatusIndicator(status: camera.enable ? .online : .offline)
+                }
+                
+                HStack {
+                    Text("Device ID")
+                    Spacer()
+                    Text(camera.deviceID)
+                        .foregroundColor(.secondary)
+                }
+                
+                HStack {
+                    Text("Channel")
+                    Spacer()
+                    Text("\(camera.uniqueChannel)")
+                        .foregroundColor(.secondary)
+                }
+            }
+            
+            Section("Device Information") {
+                HStack {
+                    Text("IP Address")
+                    Spacer()
+                    Text(camera.deviceInfo.address)
+                        .foregroundColor(.secondary)
+                }
+                
+                HStack {
+                    Text("HTTP Port")
+                    Spacer()
+                    Text("\(camera.deviceInfo.httpPort)")
+                        .foregroundColor(.secondary)
+                }
+                
+                HStack {
+                    Text("Protocol")
+                    Spacer()
+                    Text(camera.deviceInfo.protocolType)
+                        .foregroundColor(.secondary)
+                }
+                
+                HStack {
+                    Text("Device Type")
+                    Spacer()
+                    Text(camera.deviceInfo.deviceType)
+                        .foregroundColor(.secondary)
+                }
+                
+                HStack {
+                    Text("Serial Number")
+                    Spacer()
+                    Text(camera.deviceInfo.serialNo)
+                        .foregroundColor(.secondary)
+                }
+                
+                HStack {
+                    Text("MAC Address")
+                    Spacer()
+                    Text(camera.deviceInfo.mac)
+                        .foregroundColor(.secondary)
+                }
+                
+                HStack {
+                    Text("Firmware Version")
+                    Spacer()
+                    Text(camera.deviceInfo.softwareVersion)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .navigationTitle("Camera Details")
+        .navigationBarTitleDisplayMode(.large)
     }
 }
 
@@ -468,7 +633,6 @@ struct CameraDetailView: View {
 }
 
 struct AddCameraView: View {
-    @Binding var cameras: [CameraDevice]
     @Environment(\.dismiss) private var dismiss
     @State private var deviceName = ""
     @State private var ipAddress = ""
@@ -495,14 +659,6 @@ struct AddCameraView: View {
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Add") {
-                        let newCamera = CameraDevice(
-                            id: cameras.count + 1,
-                            name: deviceName,
-                            status: .connecting,
-                            ipAddress: ipAddress,
-                            port: Int(port) ?? 80
-                        )
-                        cameras.append(newCamera)
                         dismiss()
                     }
                     .disabled(deviceName.isEmpty || ipAddress.isEmpty)

@@ -6,13 +6,12 @@ class LoginViewModel: ObservableObject {
     @Published var serverURL = AppConfiguration.defaultServerURL
     @Published var username = AppConfiguration.defaultUsername
     @Published var password = AppConfiguration.defaultPassword
-    @Published var authenticationState: AuthenticationState = .idle
     @Published var showingAlert = false
     
-    private let authService: DahuaNVRAuthService
+    private let authManager = AuthenticationManager.shared
     
-    init(authService: DahuaNVRAuthService) {
-        self.authService = authService
+    var authenticationState: AuthenticationState {
+        authManager.authenticationState
     }
     
     var isFormValid: Bool {
@@ -27,34 +26,37 @@ class LoginViewModel: ObservableObject {
         authenticationState.errorMessage
     }
     
+    var hasPersistedCredentials: Bool {
+        authManager.hasPersistedAuth
+    }
+    
     func login() async {
-        authenticationState = .loading
-        
         let credentials = NVRCredentials(
             serverURL: serverURL,
             username: username,
             password: password
         )
         
-        await authService.authenticate(
-            serverURL: credentials.serverURL,
-            username: credentials.username,
-            password: credentials.password
-        )
-        
-        if authService.isAuthenticated {
-            authenticationState = .authenticated
-        } else {
-            let errorMsg = authService.errorMessage ?? "Authentication failed"
-            authenticationState = .failed(errorMsg)
+        do {
+            try await authManager.login(with: credentials)
+        } catch {
             showingAlert = true
+        }
+    }
+    
+    func attemptAutoLogin() async {
+        await authManager.attemptAutoLogin()
+    }
+    
+    func loadPersistedCredentials() {
+        if let credentials = authManager.currentCredentials {
+            serverURL = credentials.serverURL
+            username = credentials.username
+            password = credentials.password
         }
     }
     
     func dismissAlert() {
         showingAlert = false
-        if case .failed = authenticationState {
-            authenticationState = .idle
-        }
     }
 }
