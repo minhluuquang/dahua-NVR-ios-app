@@ -3,9 +3,9 @@ import SwiftUI
 
 @MainActor
 class LoginViewModel: ObservableObject {
-    @Published var serverURL = "http://cam.lab"
-    @Published var username = "admin"
-    @Published var password = "Minhmeo75321@"
+    @Published var serverURL = AppConfiguration.defaultServerURL
+    @Published var username = AppConfiguration.defaultUsername
+    @Published var password = AppConfiguration.defaultPassword
     @Published var authenticationState: AuthenticationState = .idle
     @Published var showingAlert = false
     

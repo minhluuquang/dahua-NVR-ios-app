@@ -7,5 +7,11 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<key>DEFAULT_SERVER_URL</key>
+	<string>http://cam.lab</string>
+	<key>DEFAULT_USERNAME</key>
+	<string>admin</string>
+	<key>DEFAULT_PASSWORD</key>
+	<string>Minhmeo75321@</string>
 </dict>
 </plist>
