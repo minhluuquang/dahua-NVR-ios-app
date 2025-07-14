@@ -1,11 +1,12 @@
 import SwiftUI
 
 struct LoginView: View {
-    @StateObject private var authService = DahuaNVRAuthService()
-    @State private var serverURL = "http://cam.lab"
-    @State private var username = "admin"
-    @State private var password = "Minhmeo75321@"
-    @State private var showingAlert = false
+    @StateObject private var viewModel: LoginViewModel
+    @EnvironmentObject private var authService: DahuaNVRAuthService
+    
+    init(viewModel: LoginViewModel) {
+        self._viewModel = StateObject(wrappedValue: viewModel)
+    }
 
     var body: some View {
         NavigationView {
@@ -33,11 +34,11 @@ struct LoginView: View {
                             .font(.headline)
                             .foregroundColor(.primary)
 
-                        TextField("http://cam.lab", text: $serverURL)
+                        TextField("http://cam.lab", text: $viewModel.serverURL)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
                             .autocapitalization(.none)
                             .keyboardType(.URL)
-                            .disabled(authService.isLoading)
+                            .disabled(viewModel.isLoading)
                     }
 
                     VStack(alignment: .leading, spacing: 8) {
@@ -45,10 +46,10 @@ struct LoginView: View {
                             .font(.headline)
                             .foregroundColor(.primary)
 
-                        TextField("admin", text: $username)
+                        TextField("admin", text: $viewModel.username)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
                             .autocapitalization(.none)
-                            .disabled(authService.isLoading)
+                            .disabled(viewModel.isLoading)
                     }
 
                     VStack(alignment: .leading, spacing: 8) {
@@ -56,30 +57,26 @@ struct LoginView: View {
                             .font(.headline)
                             .foregroundColor(.primary)
 
-                        SecureField("Enter password", text: $password)
+                        SecureField("Enter password", text: $viewModel.password)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
-                            .disabled(authService.isLoading)
+                            .disabled(viewModel.isLoading)
                     }
                 }
                 .padding(.horizontal)
 
                 Button(action: {
                     Task {
-                        await authService.authenticate(
-                            serverURL: serverURL,
-                            username: username,
-                            password: password
-                        )
+                        await viewModel.login()
                     }
                 }) {
                     HStack {
-                        if authService.isLoading {
+                        if viewModel.isLoading {
                             ProgressView()
                                 .scaleEffect(0.8)
                                 .foregroundColor(.white)
                         }
 
-                        Text(authService.isLoading ? "Connecting..." : "Connect")
+                        Text(viewModel.isLoading ? "Connecting..." : "Connect")
                             .font(.headline)
                             .foregroundColor(.white)
                     }
@@ -87,14 +84,14 @@ struct LoginView: View {
                     .frame(height: 50)
                     .background(
                         RoundedRectangle(cornerRadius: 10)
-                            .fill(isFormValid ? Color.blue : Color.gray)
+                            .fill(viewModel.isFormValid ? Color.blue : Color.gray)
                     )
                 }
-                .disabled(!isFormValid || authService.isLoading)
+                .disabled(!viewModel.isFormValid || viewModel.isLoading)
                 .padding(.horizontal)
                 .padding(.top, 20)
 
-                if let errorMessage = authService.errorMessage {
+                if let errorMessage = viewModel.errorMessage {
                     Text(errorMessage)
                         .foregroundColor(.red)
                         .font(.caption)
@@ -123,60 +120,18 @@ struct LoginView: View {
             .navigationTitle("NVR Login")
             .navigationBarTitleDisplayMode(.inline)
         }
-        .fullScreenCover(isPresented: $authService.isAuthenticated) {
-            MainView()
-        }
-        .alert("Connection Error", isPresented: $showingAlert) {
-            Button("OK") {}
-        } message: {
-            Text(authService.errorMessage ?? "Unknown error occurred")
-        }
-        .onChange(of: authService.errorMessage) { newValue in
-            showingAlert = newValue != nil
-        }
-    }
-
-    private var isFormValid: Bool {
-        !serverURL.isEmpty && !username.isEmpty && !password.isEmpty
-    }
-}
-
-struct MainView: View {
-    @StateObject private var authService = DahuaNVRAuthService()
-
-    var body: some View {
-        NavigationView {
-            VStack(spacing: 20) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 80))
-                    .foregroundColor(.green)
-
-                Text("Connected Successfully!")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-
-                Text("You are now connected to your Dahua NVR system")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-
-                Spacer()
-
-                Button("Logout") {
-                    authService.logout()
-                }
-                .buttonStyle(.borderedProminent)
-                .padding()
+        .alert("Connection Error", isPresented: $viewModel.showingAlert) {
+            Button("OK") {
+                viewModel.dismissAlert()
             }
-            .navigationTitle("NVR Dashboard")
-            .navigationBarTitleDisplayMode(.inline)
-        }
-        .fullScreenCover(isPresented: .constant(!authService.isAuthenticated)) {
-            LoginView()
+        } message: {
+            Text(viewModel.errorMessage ?? "Unknown error occurred")
         }
     }
 }
 
 #Preview {
-    LoginView()
+    let authService = DahuaNVRAuthService()
+    LoginView(viewModel: LoginViewModel(authService: authService))
+        .environmentObject(authService)
 }
