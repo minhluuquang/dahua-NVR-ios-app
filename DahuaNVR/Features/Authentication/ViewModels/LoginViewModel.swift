@@ -37,19 +37,15 @@ class LoginViewModel: ObservableObject {
             password: password
         )
         
+        let nvrName = extractNVRNameFromURL(serverURL)
+        let nvrSystem = NVRSystem(
+            name: nvrName,
+            credentials: credentials,
+            isDefault: true
+        )
+        
         do {
-            try await authManager.login(with: credentials)
-            
-            if authManager.isAuthenticated {
-                let nvrName = extractNVRNameFromURL(serverURL)
-                let nvrSystem = NVRSystem(
-                    name: nvrName,
-                    credentials: credentials,
-                    isDefault: true
-                )
-                
-                authManager.nvrManager.addNVRSystem(nvrSystem)
-            }
+            try await authManager.connectToNVR(nvrSystem)
         } catch {
             showingAlert = true
         }

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct MainAppView: View {
-    @StateObject private var authManager = AuthenticationManager.shared
+    @ObservedObject private var authManager = AuthenticationManager.shared
     @State private var showingNVRList = false
     
     var body: some View {
@@ -55,7 +55,17 @@ struct MainAppView: View {
     }
     
     private var currentNVRName: String {
-        authManager.nvrManager.currentNVR?.name ?? "No NVR Selected"
+        let currentNVR = authManager.nvrManager.currentNVR
+        let nvrCount = authManager.nvrManager.nvrSystems.count
+        
+        #if DEBUG
+        print("🔍 [MainAppView] Current NVR: \(currentNVR?.name ?? "nil"), NVR Systems Count: \(nvrCount)")
+        if nvrCount > 0 {
+            print("🔍 [MainAppView] NVR Systems: \(authManager.nvrManager.nvrSystems.map { $0.name })")
+        }
+        #endif
+        
+        return currentNVR?.name ?? "No NVR Selected"
     }
 }
 

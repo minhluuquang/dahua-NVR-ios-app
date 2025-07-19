@@ -7,11 +7,12 @@ struct RPCTests {
     
     @Test("RPCBase can create valid JSON-RPC requests")
     func testRPCRequestCreation() {
-        let request = RPCRequest(method: "test.method", params: ["key": "value"])
+        let params: [String: AnyJSON] = ["key": AnyJSON("value")]
+        let request = RPCRequest(method: "test.method", params: params)
         
         #expect(request.method == "test.method")
-        #expect(request.object == 0)
-        #expect(request.session == 0)
+        #expect(request.object == nil)  // Should be nil by default
+        #expect(request.session == nil)  // Should be nil by default
         #expect(request.params != nil)
     }
     
@@ -22,7 +23,7 @@ struct RPCTests {
             "result": {"status": "success"},
             "error": null,
             "id": 1,
-            "session": 123
+            "session": "123"
         }
         """.data(using: .utf8)!
         
@@ -31,6 +32,7 @@ struct RPCTests {
         #expect(response.isSuccess == true)
         #expect(response.result?["status"] == "success")
         #expect(response.error == nil)
+        #expect(response.session == "123")
     }
     
     @Test("RPCBase handles error responses correctly")
@@ -40,7 +42,7 @@ struct RPCTests {
             "result": null,
             "error": {"code": 500, "message": "Internal error"},
             "id": 1,
-            "session": 123
+            "session": "123"
         }
         """.data(using: .utf8)!
         
@@ -49,6 +51,7 @@ struct RPCTests {
         #expect(response.isSuccess == false)
         #expect(response.error?.code == 500)
         #expect(response.error?.message == "Internal error")
+        #expect(response.session == "123")
     }
     
     @Test("ConfigManagerRPC module initialization")
@@ -140,5 +143,57 @@ struct RPCLoginTests {
         let rpcLogin = RPCLogin(rpcBase: rpcBase)
         
         #expect(!rpcLogin.hasActiveSession)
+    }
+    
+    @Test("RPCBase session management")
+    func testRPCBaseSessionManagement() {
+        let rpcBase = RPCBase(baseURL: "http://test.com")
+        
+        // Initially no session
+        #expect(!rpcBase.hasActiveSession)
+        
+        // Set session ID
+        rpcBase.setSession(id: "test-session-123")
+        #expect(rpcBase.hasActiveSession)
+        
+        // Clear session
+        rpcBase.clearSession()
+        #expect(!rpcBase.hasActiveSession)
+    }
+    
+    @Test("AuthParams structure handles all fields")
+    func testAuthParamsStructure() throws {
+        let authData = """
+        {
+            "random": "random123",
+            "realm": "Login to device",
+            "encryption": "Default",
+            "authorization": "Basic"
+        }
+        """.data(using: .utf8)!
+        
+        let authParams = try JSONDecoder().decode(AuthParams.self, from: authData)
+        
+        #expect(authParams.random == "random123")
+        #expect(authParams.realm == "Login to device")
+        #expect(authParams.encryption == "Default")
+        #expect(authParams.authorization == "Basic")
+    }
+    
+    @Test("LoginResult structure handles session field")
+    func testLoginResultStructure() throws {
+        let loginData = """
+        {
+            "keepAliveInterval": 60,
+            "session": 12345,
+            "rspCode": 200
+        }
+        """.data(using: .utf8)!
+        
+        let loginResult = try JSONDecoder().decode(LoginResult.self, from: loginData)
+        
+        #expect(loginResult.keepAliveInterval == 60)
+        #expect(loginResult.session == 12345)
+        #expect(loginResult.rspCode == 200)
     }
 }

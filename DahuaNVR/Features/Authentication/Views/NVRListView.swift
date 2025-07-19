@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct NVRListView: View {
-    @StateObject private var authManager = AuthenticationManager.shared
+    @ObservedObject private var authManager = AuthenticationManager.shared
     @Environment(\.dismiss) private var dismiss
     @State private var showingAddNVR = false
     @State private var isConnecting = false
@@ -10,6 +10,12 @@ struct NVRListView: View {
     var body: some View {
         NavigationView {
             VStack {
+                #if DEBUG
+                let _ = print("🔍 [NVRListView] NVR Systems Count: \(authManager.nvrManager.nvrSystems.count)")
+                let _ = print("🔍 [NVRListView] Current NVR: \(authManager.nvrManager.currentNVR?.name ?? "nil")")
+                let _ = print("🔍 [NVRListView] NVR Systems: \(authManager.nvrManager.nvrSystems.map { $0.name })")
+                #endif
+                
                 if authManager.nvrManager.nvrSystems.isEmpty {
                     VStack(spacing: 20) {
                         Image(systemName: "server.rack")
@@ -170,7 +176,7 @@ struct NVRRowView: View {
 
 struct AddNVRView: View {
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var authManager = AuthenticationManager.shared
+    @ObservedObject private var authManager = AuthenticationManager.shared
     @State private var nvrName = ""
     @State private var serverURL = ""
     @State private var username = ""
@@ -250,7 +256,6 @@ struct AddNVRView: View {
             try await authManager.connectToNVR(nvrSystem)
             
             await MainActor.run {
-                authManager.nvrManager.addNVRSystem(nvrSystem)
                 dismiss()
             }
         } catch {

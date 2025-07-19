@@ -77,15 +77,34 @@ class DahuaNVRAuthService: ObservableObject {
         var params: [String: String] = [:]
         
         let headerValue = header.replacingOccurrences(of: "Digest ", with: "")
-        let components = headerValue.components(separatedBy: ", ")
         
-        for component in components {
-            let parts = component.components(separatedBy: "=")
-            if parts.count == 2 {
-                let key = parts[0].trimmingCharacters(in: .whitespaces)
-                let value = parts[1].trimmingCharacters(in: .whitespaces)
-                    .replacingOccurrences(of: "\"", with: "")
-                params[key] = value
+        // Better parsing that handles quoted values properly
+        let regex = try! NSRegularExpression(pattern: #"(\w+)=(?:"([^"]*)"|([^,\s]+))"#)
+        let range = NSRange(headerValue.startIndex..<headerValue.endIndex, in: headerValue)
+        let matches = regex.matches(in: headerValue, range: range)
+        
+        for match in matches {
+            if match.numberOfRanges >= 3 {
+                let keyRange = match.range(at: 1)
+                let quotedValueRange = match.range(at: 2)
+                let unquotedValueRange = match.range(at: 3)
+                
+                if let keySwiftRange = Range(keyRange, in: headerValue) {
+                    let key = String(headerValue[keySwiftRange])
+                    
+                    var value: String
+                    if quotedValueRange.location != NSNotFound,
+                       let valueSwiftRange = Range(quotedValueRange, in: headerValue) {
+                        value = String(headerValue[valueSwiftRange])
+                    } else if unquotedValueRange.location != NSNotFound,
+                              let valueSwiftRange = Range(unquotedValueRange, in: headerValue) {
+                        value = String(headerValue[valueSwiftRange])
+                    } else {
+                        continue
+                    }
+                    
+                    params[key] = value
+                }
             }
         }
         
@@ -113,11 +132,32 @@ class DahuaNVRAuthService: ObservableObject {
         let ha1 = md5("\(username):\(realm):\(password)")
         let ha2 = md5("\(method):\(uri)")
         
+        #if DEBUG
+        print("[HTTP Auth Debug] Generating digest response:")
+        print("   → HA1 input: \(username):\(realm):\(password)")
+        print("   → HA1 hash: \(ha1)")
+        print("   → HA2 input: \(method):\(uri)")
+        print("   → HA2 hash: \(ha2)")
+        print("   → QOP: \(qop)")
+        print("   → NC: \(nc)")
+        print("   → CNonce: \(cnonce)")
+        #endif
+        
         let response: String
         if qop == "auth" {
-            response = md5("\(ha1):\(nonce):\(nc):\(cnonce):\(qop):\(ha2)")
+            let responseInput = "\(ha1):\(nonce):\(nc):\(cnonce):\(qop):\(ha2)"
+            response = md5(responseInput)
+            #if DEBUG
+            print("   → Response input: \(responseInput)")
+            print("   → Response hash: \(response)")
+            #endif
         } else {
-            response = md5("\(ha1):\(nonce):\(ha2)")
+            let responseInput = "\(ha1):\(nonce):\(ha2)"
+            response = md5(responseInput)
+            #if DEBUG
+            print("   → Response input: \(responseInput)")
+            print("   → Response hash: \(response)")
+            #endif
         }
         
         var authHeader = "Digest username=\"\(username)\", realm=\"\(realm)\", nonce=\"\(nonce)\", uri=\"\(uri)\", response=\"\(response)\""
@@ -145,7 +185,7 @@ class DahuaNVRAuthService: ObservableObject {
     
     private func md5(_ string: String) -> String {
         let digest = Insecure.MD5.hash(data: string.data(using: .utf8)!)
-        return digest.map { String(format: "%02hhx", $0) }.joined()
+        return digest.map { String(format: "%02x", $0) }.joined().lowercased()
     }
     
     func logout() {

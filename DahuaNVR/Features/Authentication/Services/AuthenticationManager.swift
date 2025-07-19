@@ -62,6 +62,14 @@ final class AuthenticationManager: ObservableObject {
         
         let authResult = await dualProtocolService!.authenticate(credentials: nvrSystem.credentials)
         
+        // Ensure the NVR system exists in the list before updating status
+        if !nvrManager.nvrSystems.contains(where: { $0.id == nvrSystem.id }) {
+            #if DEBUG
+            print("🔍 [AuthManager] Adding NVR system: \(nvrSystem.name)")
+            #endif
+            nvrManager.addNVRSystem(nvrSystem)
+        }
+        
         nvrManager.updateAuthenticationStatus(
             for: nvrSystem.id,
             rpcSuccess: authResult.rpc.success,
@@ -69,6 +77,9 @@ final class AuthenticationManager: ObservableObject {
         )
         
         if authResult.httpCGI.success {
+            #if DEBUG
+            print("🔍 [AuthManager] HTTP CGI auth success, selecting NVR: \(nvrSystem.name)")
+            #endif
             currentCredentials = nvrSystem.credentials
             await saveAuthData(credentials: nvrSystem.credentials)
             nvrManager.selectNVR(nvrSystem)
