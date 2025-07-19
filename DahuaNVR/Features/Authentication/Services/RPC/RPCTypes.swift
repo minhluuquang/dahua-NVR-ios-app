@@ -99,3 +99,14 @@ struct SuccessResponse: Codable {
         case result, error
     }
 }
+
+struct LoginSuccessParams: Codable {
+    let keepAliveInterval: Int
+}
+
+struct LoginSuccessResponse: Codable {
+    let id: Int
+    let result: Bool
+    let params: LoginSuccessParams
+    let session: String
+}

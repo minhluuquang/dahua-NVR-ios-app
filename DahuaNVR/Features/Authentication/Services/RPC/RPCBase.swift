@@ -4,10 +4,10 @@ struct RPCRequest: Codable {
     let method: String
     let params: [String: AnyJSON]?
     let object: Int?
-    let session: Int?
+    let session: String?
     let id: Int?
     
-    init(method: String, params: [String: AnyJSON]? = nil, object: Int? = nil, session: Int? = nil, id: Int? = nil) {
+    init(method: String, params: [String: AnyJSON]? = nil, object: Int? = nil, session: String? = nil, id: Int? = nil) {
         self.method = method
         self.params = params
         self.object = object
@@ -92,16 +92,12 @@ class RPCBase {
     private let logger = Logger()
     private var requestID: Int = 0
     private let urlSession: URLSession
-    private var manualCookies: [String: String] = [:]
     
     init(baseURL: String) {
         self.baseURL = baseURL
         
-        // Create URLSession with persistent cookie storage
+        // Simple URLSession configuration - no cookie management needed
         let config = URLSessionConfiguration.default
-        config.httpCookieStorage = HTTPCookieStorage.shared
-        config.httpCookieAcceptPolicy = .always
-        config.httpShouldSetCookies = true
         self.urlSession = URLSession(configuration: config)
     }
     
@@ -110,17 +106,22 @@ class RPCBase {
         return requestID
     }
     
-    func send<T: Codable>(method: String, params: [String: AnyJSON]? = nil, responseType: T.Type, useLoginEndpoint: Bool = false) async throws -> RPCResponse<T> {
+    func sendDirectResponse<T: Codable>(method: String, params: [String: AnyJSON]? = nil, responseType: T.Type, useLoginEndpoint: Bool = false, includeSession: Bool = false) async throws -> T {
         let startTime = Date()
         let request: RPCRequest
         
-        if useLoginEndpoint {
-            // For login requests, use id instead of session
+        if useLoginEndpoint && !includeSession {
+            // First login request - use id instead of session
             request = RPCRequest(method: method, params: params, id: nextRequestID())
         } else {
-            // For regular requests, use stored session ID if available
-            let sessionValue = sessionID != nil ? Int(sessionID!) : 0
-            request = RPCRequest(method: method, params: params, object: 0, session: sessionValue)
+            // Regular requests or second login - use stored session ID directly
+            if includeSession {
+                // Second login with session ID
+                request = RPCRequest(method: method, params: params, session: sessionID, id: nextRequestID())
+            } else {
+                // Regular API calls
+                request = RPCRequest(method: method, params: params, object: 0, session: sessionID)
+            }
         }
         
         let endpoint = useLoginEndpoint ? "/RPC2_Login" : "/RPC2"
@@ -130,33 +131,10 @@ class RPCBase {
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        // Set manual cookies for session management
-        if !manualCookies.isEmpty {
-            let cookieHeaderValue = manualCookies.map { "\($0.key)=\($0.value)" }.joined(separator: "; ")
-            urlRequest.setValue(cookieHeaderValue, forHTTPHeaderField: "Cookie")
-            #if DEBUG
-            logger.debug("   → Manual cookies (\(manualCookies.count)): \(cookieHeaderValue)")
-            #endif
-        } else {
-            #if DEBUG
-            logger.debug("   → Manual cookies: None")
-            #endif
-        }
-        
         #if DEBUG
-        logger.debug("🚀 RPC API Call: \(method)")
+        logger.debug("🚀 RPC Call: \(method)")
         logger.debug("   → Endpoint: \(baseURL)\(endpoint)")
-        
-        // Check for existing cookies
-        if let cookies = urlSession.configuration.httpCookieStorage?.cookies(for: url), !cookies.isEmpty {
-            logger.debug("   → Session: \(cookies.count) cookies")
-            // Log cookie details for debugging
-            for cookie in cookies {
-                logger.debug("   → Cookie: \(cookie.name)=\(cookie.value)")
-            }
-        } else {
-            logger.debug("   → Session: No cookies")
-        }
+        logger.debug("   → Session ID: \(sessionID ?? "none")")
         
         if let params = params {
             logger.debug("   → Parameters: \(params)")
@@ -184,18 +162,108 @@ class RPCBase {
                 if let responseString = String(data: data, encoding: .utf8) {
                     logger.debug("   → Response: \(responseString)")
                 }
+            }
+            #endif
+            
+            // First try to decode as the target type directly
+            do {
+                let directResponse = try JSONDecoder().decode(T.self, from: data)
                 
-                // Log response cookies for debugging
-                if let headerFields = httpResponse.allHeaderFields as? [String: String] {
-                    let cookies = HTTPCookie.cookies(withResponseHeaderFields: headerFields, for: url)
-                    for cookie in cookies {
-                        logger.debug("   → Response Cookie: \(cookie.name)=\(cookie.value)")
-                    }
+                // For login responses that include session ID, extract and store it
+                if let loginResponse = directResponse as? LoginSuccessResponse {
+                    sessionID = loginResponse.session
+                    #if DEBUG
+                    logger.debug("Stored session ID from direct response: \(loginResponse.session)")
+                    #endif
+                }
+                
+                #if DEBUG
+                let successDuration = Date().timeIntervalSince(startTime)
+                logger.debug("✅ RPC Success: \(method) completed in \(String(format: "%.3f", successDuration))s")
+                #endif
+                
+                return directResponse
+                
+            } catch {
+                #if DEBUG
+                logger.error("Failed to decode direct RPC response: \(error.localizedDescription)")
+                if let responseString = String(data: data, encoding: .utf8) {
+                    logger.error("Raw response: \(responseString)")
+                }
+                #endif
+                throw RPCError(code: -1, message: "Invalid server response format: \(error.localizedDescription)")
+            }
+            
+        } catch {
+            #if DEBUG
+            let networkErrorDuration = Date().timeIntervalSince(startTime)
+            logger.error("❌ RPC Network Error: \(method)")
+            logger.error("   → Error: \(error.localizedDescription)")
+            logger.error("   → Duration: \(String(format: "%.3f", networkErrorDuration))s")
+            #endif
+            throw error
+        }
+    }
+
+    func send<T: Codable>(method: String, params: [String: AnyJSON]? = nil, responseType: T.Type, useLoginEndpoint: Bool = false, includeSession: Bool = false) async throws -> RPCResponse<T> {
+        let startTime = Date()
+        let request: RPCRequest
+        
+        if useLoginEndpoint && !includeSession {
+            // First login request - use id instead of session
+            request = RPCRequest(method: method, params: params, id: nextRequestID())
+        } else {
+            // Regular requests or second login - use stored session ID directly
+            if includeSession {
+                // Second login with session ID
+                request = RPCRequest(method: method, params: params, session: sessionID, id: nextRequestID())
+            } else {
+                // Regular API calls
+                request = RPCRequest(method: method, params: params, object: 0, session: sessionID)
+            }
+        }
+        
+        let endpoint = useLoginEndpoint ? "/RPC2_Login" : "/RPC2"
+        
+        let url = URL(string: "\(baseURL)\(endpoint)")!
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        #if DEBUG
+        logger.debug("🚀 RPC Call: \(method)")
+        logger.debug("   → Endpoint: \(baseURL)\(endpoint)")
+        logger.debug("   → Session ID: \(sessionID ?? "none")")
+        
+        if let params = params {
+            logger.debug("   → Parameters: \(params)")
+        }
+        #endif
+        
+        do {
+            let requestData = try JSONEncoder().encode(request)
+            urlRequest.httpBody = requestData
+            
+            #if DEBUG
+            if let requestString = String(data: requestData, encoding: .utf8) {
+                logger.debug("RPC Request Body: \(requestString)")
+            }
+            #endif
+            
+            let (data, response) = try await urlSession.data(for: urlRequest)
+            
+            #if DEBUG
+            let responseDuration = Date().timeIntervalSince(startTime)
+            if let httpResponse = response as? HTTPURLResponse {
+                logger.debug("✅ RPC Response: \(method)")
+                logger.debug("   → Status: \(httpResponse.statusCode)")
+                logger.debug("   → Duration: \(String(format: "%.3f", responseDuration))s")
+                if let responseString = String(data: data, encoding: .utf8) {
+                    logger.debug("   → Response: \(responseString)")
                 }
             }
             #endif
             
-            // URLSession handles cookies automatically with the configured cookie storage
             
             let rpcResponse: RPCResponse<T>
             do {
@@ -227,23 +295,14 @@ class RPCBase {
                 logger.error("   → Duration: \(String(format: "%.3f", errorDuration))s")
                 #endif
                 
-                // For login challenge errors (268632079 or 401), we should return the response
-                // instead of throwing an error so the caller can access the params
-                // BUT only for the first login (when we don't have session cookies yet)
-                if useLoginEndpoint && (error.code == 268632079 || error.code == 401) {
-                    if manualCookies.isEmpty {
-                        // First login - challenge is expected
-                        #if DEBUG
-                        logger.debug("🔓 Login challenge received (expected for first login), returning response with params")
-                        #endif
-                        return rpcResponse
-                    } else {
-                        // Second login with session cookies - challenge means authentication failed
-                        #if DEBUG
-                        logger.error("❌ Unexpected login challenge on second login with session cookies - authentication failed")
-                        #endif
-                        throw error
-                    }
+                // For login challenge errors (268632079 or 401), return the response for the first login
+                // so the caller can access the challenge params
+                if useLoginEndpoint && !includeSession && (error.code == 268632079 || error.code == 401) {
+                    // First login - challenge is expected
+                    #if DEBUG
+                    logger.debug("🔓 Login challenge received (expected for first login)")
+                    #endif
+                    return rpcResponse
                 }
                 
                 throw error
@@ -272,22 +331,10 @@ class RPCBase {
             self.username = username
         }
         
-        // Store session cookies manually for reliable access
-        manualCookies = [
-            "WebClientSessionID": id,
-            "DWebClientSessionID": id, 
-            "DhWebClientSessionID": id
-        ]
-        
-        if let username = self.username {
-            manualCookies["username"] = username
-        }
-        
         #if DEBUG
-        logger.debug("Session ID set: \(id)")
-        logger.debug("Manual cookies stored: \(manualCookies.count)")
-        for (name, value) in manualCookies {
-            logger.debug("Manual cookie: \(name)=\(value)")
+        logger.debug("📋 Session established: \(id)")
+        if let username = self.username {
+            logger.debug("   → Username: \(username)")
         }
         #endif
     }
@@ -297,10 +344,9 @@ class RPCBase {
         sessionID = nil
         username = nil
         requestID = 0
-        manualCookies.removeAll()
         
         #if DEBUG
-        logger.debug("Setting up RPC session for \(baseURL)")
+        logger.debug("🔧 Setting up RPC session for \(baseURL)")
         #endif
     }
     
@@ -308,26 +354,14 @@ class RPCBase {
         sessionID = nil
         username = nil
         requestID = 0
-        manualCookies.removeAll()
         
         #if DEBUG
-        logger.debug("Cleared RPC session")
+        logger.debug("🧹 Cleared RPC session")
         #endif
     }
     
     var hasActiveSession: Bool {
-        if sessionID != nil {
-            return true
-        }
-        
-        // Check if we have session cookies
-        if let url = URL(string: baseURL),
-           let cookieStorage = urlSession.configuration.httpCookieStorage,
-           let cookies = cookieStorage.cookies(for: url) {
-            return cookies.contains { $0.name == "WebClientSessionID" }
-        }
-        
-        return false
+        return sessionID != nil
     }
 }
 
