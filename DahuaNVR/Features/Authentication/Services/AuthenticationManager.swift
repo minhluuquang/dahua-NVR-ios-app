@@ -9,10 +9,13 @@ final class AuthenticationManager: ObservableObject {
     @Published private(set) var currentCredentials: NVRCredentials?
     
     private let authService = DahuaNVRAuthService()
+    private var dualProtocolService: DualProtocolService?
     private let keychainHelper = KeychainHelper.shared
     private let authDataKey = "dahua_nvr_auth_data"
     
     private var cancellables = Set<AnyCancellable>()
+    
+    let nvrManager = NVRManager()
     
     private init() {
         bindAuthService()
@@ -51,6 +54,42 @@ final class AuthenticationManager: ObservableObject {
         if authenticationState == .authenticated {
             await saveAuthData(credentials: credentials)
             currentCredentials = credentials
+        }
+    }
+    
+    func connectToNVR(_ nvrSystem: NVRSystem) async throws {
+        dualProtocolService = DualProtocolService(baseURL: nvrSystem.credentials.serverURL)
+        
+        let authResult = await dualProtocolService!.authenticate(credentials: nvrSystem.credentials)
+        
+        nvrManager.updateAuthenticationStatus(
+            for: nvrSystem.id,
+            rpcSuccess: authResult.rpc.success,
+            httpCGISuccess: authResult.httpCGI.success
+        )
+        
+        if authResult.httpCGI.success {
+            currentCredentials = nvrSystem.credentials
+            await saveAuthData(credentials: nvrSystem.credentials)
+            nvrManager.selectNVR(nvrSystem)
+        } else {
+            if let error = authResult.httpCGI.error {
+                throw error
+            } else {
+                throw AuthError.authenticationFailed
+            }
+        }
+    }
+    
+    func attemptAutoConnectToDefaultNVR() async {
+        guard let defaultNVR = nvrManager.defaultNVR else {
+            return
+        }
+        
+        do {
+            try await connectToNVR(defaultNVR)
+        } catch {
+            print("Failed to auto-connect to default NVR: \(error)")
         }
     }
     
@@ -141,5 +180,27 @@ final class AuthenticationManager: ObservableObject {
     
     var hasPersistedAuth: Bool {
         keychainHelper.exists(forKey: authDataKey)
+    }
+    
+    var httpCGIService: CameraAPIService? {
+        return dualProtocolService?.httpCGI
+    }
+    
+    var rpcService: RPCService? {
+        return dualProtocolService?.rpc
+    }
+    
+    var isDualProtocolAvailable: Bool {
+        return dualProtocolService?.isFullyAuthenticated ?? false
+    }
+    
+    var authenticationStatusText: String {
+        return dualProtocolService?.authenticationStatus ?? "Not connected"
+    }
+    
+    func disconnect() async {
+        await dualProtocolService?.disconnect()
+        await logout()
+        dualProtocolService = nil
     }
 }

@@ -39,9 +39,28 @@ class LoginViewModel: ObservableObject {
         
         do {
             try await authManager.login(with: credentials)
+            
+            if authManager.isAuthenticated {
+                let nvrName = extractNVRNameFromURL(serverURL)
+                let nvrSystem = NVRSystem(
+                    name: nvrName,
+                    credentials: credentials,
+                    isDefault: true
+                )
+                
+                authManager.nvrManager.addNVRSystem(nvrSystem)
+            }
         } catch {
             showingAlert = true
         }
+    }
+    
+    private func extractNVRNameFromURL(_ url: String) -> String {
+        if let urlComponents = URLComponents(string: url),
+           let host = urlComponents.host {
+            return host
+        }
+        return "NVR System"
     }
     
     func attemptAutoLogin() async {
