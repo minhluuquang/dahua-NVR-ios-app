@@ -177,3 +177,4 @@ let encodeConfig = await rpcService.configManager.getConfig("Encode", channel: 1
 ## Important Guidelines
 - Never update anything in @DahuaNVR.xcodeproj/project.pbxproj file
 - Always add -quiet flag when running test. Example: xcodebuild test -quiet -project DahuaNVR.xcodeproj -scheme DahuaNVR -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:DahuaNVRTests/RPCTests/RPCTests
+- Always add -quiet flag when running build. Example: xcodebuild -quiet -project DahuaNVR.xcodeproj -scheme DahuaNVR -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 16' build

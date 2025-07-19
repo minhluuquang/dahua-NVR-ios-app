@@ -86,13 +86,34 @@ class DualProtocolService {
     }
     
     private func authenticateCGI(credentials: NVRCredentials) async throws {
-        await cgiService.fetchCameras()
+        // TECH_DEBT: Temporary workaround for circular dependency issue
+        // The CameraAPIService relies on AuthenticationManager.shared.currentCredentials
+        // which isn't set until AFTER authentication succeeds, creating a circular dependency.
+        // Long-term solution: Refactor CameraAPIService to accept explicit credentials
+        // in all methods to eliminate global state dependency.
+        // Tracking: Authentication architecture refactor
         
-        if cgiService.errorMessage == nil {
+        #if DEBUG
+        logger.debug("Creating temporary CGI service for authentication test")
+        logger.debug("Using explicit credentials to bypass global state dependency")
+        #endif
+        
+        let tempCGIService = CameraAPIService()
+        
+        do {
+            // Test authentication using the new explicit credential method
+            try await tempCGIService.authenticate(with: credentials)
+            
             isHTTPCGIAuthenticated = true
-        } else {
+            #if DEBUG
+            logger.debug("CGI authentication test successful")
+            #endif
+        } catch {
             isHTTPCGIAuthenticated = false
-            throw CameraAPIError.requestFailed(statusCode: 401)
+            #if DEBUG
+            logger.error("CGI authentication test failed: \(error.localizedDescription)")
+            #endif
+            throw error
         }
     }
     

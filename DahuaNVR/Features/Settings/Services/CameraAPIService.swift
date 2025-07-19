@@ -13,8 +13,138 @@ class CameraAPIService: ObservableObject {
     private let logger = Logger(subsystem: "com.minhlq.DahuaNVR", category: "CameraAPIService")
 
     init() {
-        Task {
-            await updateCredentials()
+        // Removed async Task that caused race condition
+        // Credentials will be set explicitly via method calls
+    }
+    
+    // MARK: - Authentication Test Method
+    // Helper method for testing authentication without affecting global state
+    
+    func authenticate(with credentials: NVRCredentials) async throws {
+        #if DEBUG
+        logger.debug("authenticate(with:) - Testing authentication for \(credentials.serverURL)")
+        #endif
+        
+        // Test authentication by making a simple authenticated request
+        let endpoint = "/cgi-bin/LogicDeviceManager.cgi?action=getCameraAll"
+        guard let url = URL(string: credentials.serverURL + endpoint) else {
+            throw CameraAPIError.invalidURL
+        }
+        
+        #if DEBUG
+        logger.debug("authenticate(with:) - Testing CGI authentication with URL: \(url.absoluteString)")
+        #endif
+        
+        // Use stateless authentication to avoid race conditions
+        let authenticatedRequest = try await createAuthenticatedRequest(
+            for: url,
+            username: credentials.username,
+            password: credentials.password
+        )
+        let (_, response) = try await URLSession.shared.data(for: authenticatedRequest)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw CameraAPIError.invalidResponse
+        }
+        
+        if httpResponse.statusCode != 200 {
+            #if DEBUG
+            logger.error("authenticate(with:) - CGI authentication failed with status: \(httpResponse.statusCode)")
+            #endif
+            throw CameraAPIError.requestFailed(statusCode: httpResponse.statusCode)
+        }
+        
+        #if DEBUG
+        logger.debug("authenticate(with:) - CGI authentication successful")
+        #endif
+    }
+    
+    // MARK: - NEW ARCHITECTURE: Explicit Credential Methods
+    // These methods accept credentials as parameters, eliminating dependency on global state
+    // This improves testability and prevents circular dependency issues during authentication
+    
+    func fetchCameras(with credentials: NVRCredentials) async -> [NVRCamera] {
+        #if DEBUG
+        logger.debug("fetchCameras(with:) - Using explicit credentials for \(credentials.serverURL)")
+        logger.debug("fetchCameras(with:) - Credentials Debug:")
+        logger.debug("   → serverURL: '\(credentials.serverURL)'")
+        logger.debug("   → username: '\(credentials.username)'")
+        #endif
+        
+        // Use provided credentials directly instead of relying on global state
+        let savedBaseURL = self.baseURL
+        let savedUsername = self.username  
+        let savedPassword = self.password
+        
+        #if DEBUG
+        logger.debug("fetchCameras(with:) - Before setting credentials:")
+        logger.debug("   → current baseURL: '\(self.baseURL)'")
+        #endif
+        
+        // Temporarily set credentials for this operation
+        self.baseURL = credentials.serverURL
+        self.username = credentials.username
+        self.password = credentials.password
+        
+        #if DEBUG
+        logger.debug("fetchCameras(with:) - After setting credentials:")
+        logger.debug("   → new baseURL: '\(self.baseURL)'")
+        logger.debug("   → new username: '\(self.username)'")
+        #endif
+        
+        do {
+            let cameras = try await getCameraAll()
+            
+            // Restore original credentials
+            self.baseURL = savedBaseURL
+            self.username = savedUsername
+            self.password = savedPassword
+            
+            return cameras
+        } catch {
+            // Restore original credentials even on error
+            self.baseURL = savedBaseURL
+            self.username = savedUsername
+            self.password = savedPassword
+            
+            await MainActor.run {
+                self.errorMessage = error.localizedDescription
+            }
+            logDetailedError(error: error, context: "fetchCameras(with:)")
+            return []
+        }
+    }
+    
+    func updateCameraIP(camera: NVRCamera, newIPAddress: String, with credentials: NVRCredentials) async throws {
+        #if DEBUG
+        logger.debug("updateCameraIP(with:) - Using explicit credentials for \(credentials.serverURL)")
+        #endif
+        
+        // Use provided credentials directly instead of relying on global state
+        let savedBaseURL = self.baseURL
+        let savedUsername = self.username
+        let savedPassword = self.password
+        
+        // Temporarily set credentials for this operation
+        self.baseURL = credentials.serverURL
+        self.username = credentials.username
+        self.password = credentials.password
+        
+        do {
+            try await updateCameraByGroup(camera: camera, newIPAddress: newIPAddress)
+            
+            // Restore original credentials
+            self.baseURL = savedBaseURL
+            self.username = savedUsername
+            self.password = savedPassword
+        } catch {
+            // Restore original credentials even on error
+            self.baseURL = savedBaseURL
+            self.username = savedUsername
+            self.password = savedPassword
+            
+            logDetailedError(error: error, context: "updateCameraIP(with:)")
+            throw error
         }
     }
 
@@ -26,6 +156,12 @@ class CameraAPIService: ObservableObject {
         self.password = authManager.currentCredentials?.password ?? ""
     }
 
+    // MARK: - DEPRECATED METHODS: Backward Compatibility
+    // These methods are deprecated and will be removed in a future version
+    // Use the explicit credential versions above for better testability and architecture
+    
+    @available(*, deprecated, renamed: "fetchCameras(with:)", 
+               message: "Use fetchCameras(with credentials:) for explicit credential handling and better testability")
     func fetchCameras() async {
         await MainActor.run {
             self.isLoading = true
@@ -42,21 +178,28 @@ class CameraAPIService: ObservableObject {
             return
         }
 
-        do {
-            let fetchedCameras = try await getCameraAll()
+        // Use the new explicit credential method for consistency
+        let credentials = await MainActor.run {
+            return AuthenticationManager.shared.currentCredentials
+        }
+        
+        guard let credentials = credentials else {
             await MainActor.run {
-                self.cameras = fetchedCameras
                 self.isLoading = false
+                self.errorMessage = "No credentials available in AuthenticationManager"
             }
-        } catch {
-            await MainActor.run {
-                self.isLoading = false
-                self.errorMessage = error.localizedDescription
-            }
-            logDetailedError(error: error, context: "fetchCameras")
+            return
+        }
+        
+        let fetchedCameras = await fetchCameras(with: credentials)
+        await MainActor.run {
+            self.cameras = fetchedCameras
+            self.isLoading = false
         }
     }
 
+    @available(*, deprecated, renamed: "updateCameraIP(camera:newIPAddress:with:)",
+               message: "Use updateCameraIP(camera:newIPAddress:with credentials:) for explicit credential handling and better testability")
     func updateCameraIP(camera: NVRCamera, newIPAddress: String) async throws {
         await updateCredentials()
 
@@ -66,22 +209,46 @@ class CameraAPIService: ObservableObject {
             throw error
         }
 
-        do {
-            try await updateCameraByGroup(camera: camera, newIPAddress: newIPAddress)
-        } catch {
-            logDetailedError(error: error, context: "updateCameraIP")
+        // Use the new explicit credential method for consistency
+        let credentials = await MainActor.run {
+            return AuthenticationManager.shared.currentCredentials
+        }
+        
+        guard let credentials = credentials else {
+            let error = CameraAPIError.invalidURL
+            logDetailedError(error: error, context: "updateCameraIP - no credentials in AuthenticationManager")
             throw error
         }
+        
+        try await updateCameraIP(camera: camera, newIPAddress: newIPAddress, with: credentials)
     }
 
     private func getCameraAll() async throws -> [NVRCamera] {
         let endpoint = "/cgi-bin/LogicDeviceManager.cgi?action=getCameraAll"
+        
+        #if DEBUG
+        logger.debug("getCameraAll - URL Construction Debug:")
+        logger.debug("   → baseURL: '\(self.baseURL)'")
+        logger.debug("   → endpoint: '\(endpoint)'")
+        logger.debug("   → combined: '\(self.baseURL + endpoint)'")
+        #endif
+        
         guard let url = URL(string: baseURL + endpoint) else {
             let error = CameraAPIError.invalidURL
+            #if DEBUG
+            logger.error("getCameraAll - URL construction failed!")
+            logger.error("   → baseURL: '\(self.baseURL)'")
+            logger.error("   → endpoint: '\(endpoint)'") 
+            logger.error("   → combined: '\(self.baseURL + endpoint)'")
+            #endif
             logDetailedError(
                 error: error, context: "getCameraAll - invalid URL: \(baseURL + endpoint)")
             throw error
         }
+        
+        #if DEBUG
+        logger.debug("getCameraAll - Successfully constructed URL: \(url.absoluteString)")
+        #endif
 
         let authenticatedRequest = try await createAuthenticatedRequest(for: url)
         let (data, response) = try await URLSession.shared.data(for: authenticatedRequest)
@@ -195,10 +362,32 @@ class CameraAPIService: ObservableObject {
     }
 
     private func createAuthenticatedRequest(for url: URL) async throws -> URLRequest {
+        // Use instance variables for backward compatibility
+        return try await createAuthenticatedRequest(
+            for: url,
+            username: self.username,
+            password: self.password
+        )
+    }
+    
+    private func createAuthenticatedRequest(
+        for url: URL,
+        username: String,
+        password: String
+    ) async throws -> URLRequest {
+        #if DEBUG
+        logger.debug("🔐 CGI Digest Authentication Flow Starting")
+        logger.debug("   → URL: \(url.absoluteString)")
+        logger.debug("   → Username: \(username)")
+        #endif
+        
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("DahuaNVR/1.0", forHTTPHeaderField: "User-Agent")
 
+        #if DEBUG
+        logger.debug("🚀 CGI Step 1: Making initial unauthenticated request")
+        #endif
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
@@ -209,18 +398,52 @@ class CameraAPIService: ObservableObject {
             throw error
         }
 
+        #if DEBUG
+        logger.debug("📥 CGI Step 1 Response: Status \(httpResponse.statusCode)")
+        if let responseString = String(data: data, encoding: .utf8) {
+            logger.debug("   → Response Body: \(responseString)")
+        }
+        logger.debug("   → All Headers: \(httpResponse.allHeaderFields)")
+        #endif
+
         if httpResponse.statusCode == 401 {
+            #if DEBUG
+            logger.debug("🔑 CGI Step 2: Processing 401 challenge")
+            #endif
+            
             guard let authHeader = httpResponse.value(forHTTPHeaderField: "WWW-Authenticate") else {
                 let error = CameraAPIError.missingAuthHeader
+                #if DEBUG
+                logger.error("❌ CGI Error: No WWW-Authenticate header found")
+                #endif
                 logHTTPError(
                     response: httpResponse, data: data,
                     context: "createAuthenticatedRequest - missing auth header")
                 throw error
             }
 
+            #if DEBUG
+            logger.debug("📋 CGI Digest Challenge Received:")
+            logger.debug("   → WWW-Authenticate: \(authHeader)")
+            #endif
 
             let digestParams = try parseDigestHeader(authHeader)
-            return try buildAuthenticatedRequest(url: url, digestParams: digestParams)
+            
+            #if DEBUG
+            logger.debug("✅ CGI Step 3: Building authenticated request")
+            logger.debug("   → Digest Params: \(digestParams)")
+            #endif
+            
+            return try buildAuthenticatedRequest(
+                url: url,
+                digestParams: digestParams,
+                username: username,
+                password: password
+            )
+        } else {
+            #if DEBUG
+            logger.debug("✅ CGI No authentication required (status: \(httpResponse.statusCode))")
+            #endif
         }
 
         return request
@@ -348,9 +571,16 @@ class CameraAPIService: ObservableObject {
         return params
     }
 
-    private func buildAuthenticatedRequest(url: URL, digestParams: [String: String]) throws
-        -> URLRequest
-    {
+    private func buildAuthenticatedRequest(
+        url: URL,
+        digestParams: [String: String],
+        username: String,
+        password: String
+    ) throws -> URLRequest {
+        #if DEBUG
+        logger.debug("🔧 CGI Building Digest Authentication Request")
+        #endif
+        
         guard let realm = digestParams["realm"],
             let nonce = digestParams["nonce"]
         else {
@@ -364,14 +594,47 @@ class CameraAPIService: ObservableObject {
         let nc = "00000001"
         let cnonce = generateCnonce()
 
+        #if DEBUG
+        logger.debug("📋 CGI Digest Parameters:")
+        logger.debug("   → username: \(username)")
+        logger.debug("   → realm: \(realm)")
+        logger.debug("   → nonce: \(nonce)")
+        logger.debug("   → uri: \(uri)")
+        logger.debug("   → method: \(method)")
+        logger.debug("   → qop: \(qop)")
+        logger.debug("   → nc: \(nc)")
+        logger.debug("   → cnonce: \(cnonce)")
+        if let opaque = opaque {
+            logger.debug("   → opaque: \(opaque)")
+        }
+        #endif
+
         let ha1 = md5("\(username):\(realm):\(password)")
         let ha2 = md5("\(method):\(uri)")
 
+        #if DEBUG
+        logger.debug("🔐 CGI Digest Calculation:")
+        logger.debug("   → HA1 input: \(username):\(realm):[password]")
+        logger.debug("   → HA1 result: \(ha1)")
+        logger.debug("   → HA2 input: \(method):\(uri)")
+        logger.debug("   → HA2 result: \(ha2)")
+        #endif
+
         let response: String
         if qop == "auth" {
-            response = md5("\(ha1):\(nonce):\(nc):\(cnonce):\(qop):\(ha2)")
+            let responseInput = "\(ha1):\(nonce):\(nc):\(cnonce):\(qop):\(ha2)"
+            response = md5(responseInput)
+            #if DEBUG
+            logger.debug("   → Response input (with qop): \(responseInput)")
+            logger.debug("   → Response result: \(response)")
+            #endif
         } else {
-            response = md5("\(ha1):\(nonce):\(ha2)")
+            let responseInput = "\(ha1):\(nonce):\(ha2)"
+            response = md5(responseInput)
+            #if DEBUG
+            logger.debug("   → Response input (no qop): \(responseInput)")
+            logger.debug("   → Response result: \(response)")
+            #endif
         }
 
         var authHeader =
@@ -385,10 +648,19 @@ class CameraAPIService: ObservableObject {
             authHeader += ", opaque=\"\(opaque)\""
         }
 
+        #if DEBUG
+        logger.debug("📤 CGI Final Authorization Header:")
+        logger.debug("   → \(authHeader)")
+        #endif
+
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("DahuaNVR/1.0", forHTTPHeaderField: "User-Agent")
         request.setValue(authHeader, forHTTPHeaderField: "Authorization")
+
+        #if DEBUG
+        logger.debug("✅ CGI Authenticated request built successfully")
+        #endif
 
         return request
     }
