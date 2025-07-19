@@ -49,7 +49,9 @@ struct MainAppView: View {
                 }
             }
             .sheet(isPresented: $showingNVRList) {
-                NVRListView()
+                NavigationView {
+                    NVRListView()
+                }
             }
         }
     }

@@ -21,10 +21,8 @@ struct ContentView: View {
                     .background(Color(.systemBackground))
             } else if authManager.isAuthenticated {
                 MainAppView()
-            } else if authManager.nvrManager.nvrSystems.isEmpty {
-                LoginView(viewModel: LoginViewModel())
             } else {
-                NVRListView()
+                LoginView(viewModel: LoginViewModel())
             }
         }
         .task {

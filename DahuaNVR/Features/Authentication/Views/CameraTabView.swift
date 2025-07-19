@@ -1,9 +1,18 @@
 import SwiftUI
 
+struct CameraDetailIdentifier: Identifiable {
+    let id: String
+    let camera: NVRCamera
+    
+    init(camera: NVRCamera) {
+        self.id = camera.deviceID
+        self.camera = camera
+    }
+}
+
 struct CameraTabView: View {
     @StateObject private var cameraService = CameraAPIService()
-    @State private var selectedCamera: NVRCamera?
-    @State private var showingCameraDetail = false
+    @State private var selectedCameraDeviceID: String?
 
     var body: some View {
         NavigationView {
@@ -28,7 +37,7 @@ struct CameraTabView: View {
 
                         Button("Retry") {
                             Task {
-                                await cameraService.fetchCameras()
+                                await fetchCamerasWithCredentials()
                             }
                         }
                         .buttonStyle(.borderedProminent)
@@ -51,7 +60,7 @@ struct CameraTabView: View {
 
                         Button("Refresh") {
                             Task {
-                                await cameraService.fetchCameras()
+                                await fetchCamerasWithCredentials()
                             }
                         }
                         .buttonStyle(.borderedProminent)
@@ -61,12 +70,11 @@ struct CameraTabView: View {
                     List(cameraService.cameras) { camera in
                         CameraRowView(camera: camera)
                             .onTapGesture {
-                                selectedCamera = camera
-                                showingCameraDetail = true
+                                selectedCameraDeviceID = camera.deviceID
                             }
                     }
                     .refreshable {
-                        await cameraService.fetchCameras()
+                        await fetchCamerasWithCredentials()
                     }
                 }
             }
@@ -76,22 +84,52 @@ struct CameraTabView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Refresh") {
                         Task {
-                            await cameraService.fetchCameras()
+                            await fetchCamerasWithCredentials()
                         }
                     }
                     .disabled(cameraService.isLoading)
                 }
             }
-            .sheet(isPresented: $showingCameraDetail) {
-                if let camera = selectedCamera {
-                    CameraInfoView(camera: camera)
+            .sheet(item: Binding<CameraDetailIdentifier?>(
+                get: {
+                    guard let deviceID = selectedCameraDeviceID,
+                          let camera = cameraService.cameras.first(where: { $0.deviceID == deviceID }) else {
+                        return nil
+                    }
+                    return CameraDetailIdentifier(camera: camera)
+                },
+                set: { _ in
+                    selectedCameraDeviceID = nil
                 }
+            )) { identifier in
+                CameraInfoView(camera: identifier.camera)
             }
         }
         .onAppear {
             Task {
-                await cameraService.fetchCameras()
+                await fetchCamerasWithCredentials()
             }
+        }
+    }
+    
+    private func fetchCamerasWithCredentials() async {
+        await MainActor.run {
+            cameraService.isLoading = true
+            cameraService.errorMessage = nil
+        }
+        
+        guard let credentials = AuthenticationManager.shared.currentCredentials else {
+            await MainActor.run {
+                cameraService.isLoading = false
+                cameraService.errorMessage = "Authentication required. Please login first."
+            }
+            return
+        }
+        
+        let fetchedCameras = await cameraService.fetchCameras(with: credentials)
+        await MainActor.run {
+            cameraService.cameras = fetchedCameras
+            cameraService.isLoading = false
         }
     }
 }
@@ -252,7 +290,15 @@ struct CameraInfoView: View {
             }
 
             do {
-                try await cameraService.updateCameraIP(camera: camera, newIPAddress: newIPAddress)
+                guard let credentials = AuthenticationManager.shared.currentCredentials else {
+                    await MainActor.run {
+                        isUpdating = false
+                        updateError = "Authentication required. Please login first."
+                    }
+                    return
+                }
+                
+                try await cameraService.updateCameraIP(camera: camera, newIPAddress: newIPAddress, with: credentials)
 
                 await MainActor.run {
                     isUpdating = false

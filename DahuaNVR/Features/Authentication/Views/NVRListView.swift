@@ -8,79 +8,79 @@ struct NVRListView: View {
     @State private var connectionError: String?
     
     var body: some View {
-        NavigationView {
-            VStack {
-                #if DEBUG
-                let _ = print("🔍 [NVRListView] NVR Systems Count: \(authManager.nvrManager.nvrSystems.count)")
-                let _ = print("🔍 [NVRListView] Current NVR: \(authManager.nvrManager.currentNVR?.name ?? "nil")")
-                let _ = print("🔍 [NVRListView] NVR Systems: \(authManager.nvrManager.nvrSystems.map { $0.name })")
-                #endif
-                
-                if authManager.nvrManager.nvrSystems.isEmpty {
-                    VStack(spacing: 20) {
-                        Image(systemName: "server.rack")
-                            .font(.system(size: 60))
-                            .foregroundColor(.gray)
-                        
-                        Text("No NVR Systems")
-                            .font(.title2)
-                            .fontWeight(.medium)
-                        
-                        Text("Add your first NVR system to get started.")
-                            .font(.body)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                        
-                        Button("Add NVR System") {
-                            showingAddNVR = true
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-                    .padding()
-                } else {
-                    List {
-                        ForEach(authManager.nvrManager.nvrSystems) { nvr in
-                            NVRRowView(
-                                nvr: nvr,
-                                isSelected: authManager.nvrManager.currentNVR?.id == nvr.id,
-                                isConnecting: isConnecting
-                            ) {
-                                Task {
-                                    await connectToNVR(nvr)
-                                }
-                            } onSetDefault: {
-                                authManager.nvrManager.setDefaultNVR(nvr)
-                            }
-                        }
-                        .onDelete(perform: deleteNVRSystems)
-                    }
-                }
-            }
-            .navigationTitle("NVR Systems")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Close") {
-                        dismiss()
-                    }
-                }
-                
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Add") {
+        VStack {
+            #if DEBUG
+            let _ = print("🔍 [NVRListView] NVR Systems Count: \(authManager.nvrManager.nvrSystems.count)")
+            let _ = print("🔍 [NVRListView] Current NVR: \(authManager.nvrManager.currentNVR?.name ?? "nil")")
+            let _ = print("🔍 [NVRListView] NVR Systems: \(authManager.nvrManager.nvrSystems.map { $0.name })")
+            #endif
+            
+            if authManager.nvrManager.nvrSystems.isEmpty {
+                VStack(spacing: 20) {
+                    Image(systemName: "server.rack")
+                        .font(.system(size: 60))
+                        .foregroundColor(.gray)
+                    
+                    Text("No NVR Systems")
+                        .font(.title2)
+                        .fontWeight(.medium)
+                    
+                    Text("Add your first NVR system to get started.")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                    
+                    Button("Add NVR System") {
                         showingAddNVR = true
                     }
+                    .buttonStyle(.borderedProminent)
+                }
+                .padding()
+            } else {
+                List {
+                    ForEach(authManager.nvrManager.nvrSystems) { nvr in
+                        NVRRowView(
+                            nvr: nvr,
+                            isSelected: authManager.nvrManager.currentNVR?.id == nvr.id,
+                            isConnecting: isConnecting
+                        ) {
+                            Task {
+                                await connectToNVR(nvr)
+                            }
+                        } onSetDefault: {
+                            authManager.nvrManager.setDefaultNVR(nvr)
+                        }
+                    }
+                    .onDelete(perform: deleteNVRSystems)
                 }
             }
-            .sheet(isPresented: $showingAddNVR) {
+        }
+        .navigationTitle("NVR Systems")
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button("Close") {
+                    dismiss()
+                }
+            }
+            
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Add") {
+                    showingAddNVR = true
+                }
+            }
+        }
+        .sheet(isPresented: $showingAddNVR) {
+            NavigationView {
                 AddNVRView()
             }
-            .alert("Connection Error", isPresented: .constant(connectionError != nil)) {
-                Button("OK") {
-                    connectionError = nil
-                }
-            } message: {
-                Text(connectionError ?? "")
+        }
+        .alert("Connection Error", isPresented: .constant(connectionError != nil)) {
+            Button("OK") {
+                connectionError = nil
             }
+        } message: {
+            Text(connectionError ?? "")
         }
     }
     
@@ -186,49 +186,47 @@ struct AddNVRView: View {
     @State private var connectionError: String?
     
     var body: some View {
-        NavigationView {
-            Form {
-                Section("NVR Information") {
-                    TextField("NVR Name", text: $nvrName)
-                    TextField("Server URL", text: $serverURL)
-                        .keyboardType(.URL)
-                        .autocapitalization(.none)
-                        .autocorrectionDisabled()
-                    TextField("Username", text: $username)
-                        .autocapitalization(.none)
-                        .autocorrectionDisabled()
-                    SecureField("Password", text: $password)
-                }
-                
-                Section("Settings") {
-                    Toggle("Set as Default NVR", isOn: $isDefault)
-                }
-                
-                Section {
-                    Button(isConnecting ? "Connecting..." : "Add NVR System") {
-                        Task {
-                            await addNVRSystem()
-                        }
-                    }
-                    .disabled(!isFormValid || isConnecting)
-                }
+        Form {
+            Section("NVR Information") {
+                TextField("NVR Name", text: $nvrName)
+                TextField("Server URL", text: $serverURL)
+                    .keyboardType(.URL)
+                    .autocapitalization(.none)
+                    .autocorrectionDisabled()
+                TextField("Username", text: $username)
+                    .autocapitalization(.none)
+                    .autocorrectionDisabled()
+                SecureField("Password", text: $password)
             }
-            .navigationTitle("Add NVR System")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
+            
+            Section("Settings") {
+                Toggle("Set as Default NVR", isOn: $isDefault)
+            }
+            
+            Section {
+                Button(isConnecting ? "Connecting..." : "Add NVR System") {
+                    Task {
+                        await addNVRSystem()
                     }
                 }
+                .disabled(!isFormValid || isConnecting)
             }
-            .alert("Connection Error", isPresented: .constant(connectionError != nil)) {
-                Button("OK") {
-                    connectionError = nil
+        }
+        .navigationTitle("Add NVR System")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button("Cancel") {
+                    dismiss()
                 }
-            } message: {
-                Text(connectionError ?? "")
             }
+        }
+        .alert("Connection Error", isPresented: .constant(connectionError != nil)) {
+            Button("OK") {
+                connectionError = nil
+            }
+        } message: {
+            Text(connectionError ?? "")
         }
     }
     

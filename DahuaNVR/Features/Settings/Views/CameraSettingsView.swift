@@ -102,7 +102,7 @@ struct CameraListView: View {
                     
                     Button("Retry") {
                         Task {
-                            await cameraAPIService.fetchCameras()
+                            await fetchCamerasWithCredentials()
                         }
                     }
                     .buttonStyle(.borderedProminent)
@@ -125,7 +125,7 @@ struct CameraListView: View {
                 Menu {
                     Button("Refresh") {
                         Task {
-                            await cameraAPIService.fetchCameras()
+                            await fetchCamerasWithCredentials()
                         }
                     }
                     Button("Add Device") {
@@ -146,7 +146,28 @@ struct CameraListView: View {
             SearchDevicesView()
         }
         .task {
-            await cameraAPIService.fetchCameras()
+            await fetchCamerasWithCredentials()
+        }
+    }
+    
+    private func fetchCamerasWithCredentials() async {
+        await MainActor.run {
+            cameraAPIService.isLoading = true
+            cameraAPIService.errorMessage = nil
+        }
+        
+        guard let credentials = AuthenticationManager.shared.currentCredentials else {
+            await MainActor.run {
+                cameraAPIService.isLoading = false
+                cameraAPIService.errorMessage = "Authentication required. Please login first."
+            }
+            return
+        }
+        
+        let fetchedCameras = await cameraAPIService.fetchCameras(with: credentials)
+        await MainActor.run {
+            cameraAPIService.cameras = fetchedCameras
+            cameraAPIService.isLoading = false
         }
     }
     

@@ -272,6 +272,13 @@ class CameraAPIService: ObservableObject {
             throw error
         }
 
+        #if DEBUG
+        logger.debug("🔍 getCameraAll - Raw server response:")
+        logger.debug("Response length: \(responseString.count) characters")
+        logger.debug("Raw response content:")
+        logger.debug("\(responseString)")
+        logger.debug("🔍 End of raw server response")
+        #endif
 
         return try parseDahuaResponse(responseString)
     }
@@ -705,8 +712,14 @@ class CameraAPIService: ObservableObject {
                 if let index = Int(indexStr) {
                     if currentCameraIndex != index {
                         if currentCameraIndex != nil, !currentCameraData.isEmpty {
+                            #if DEBUG
+                            logger.debug("📷 Processing camera \(currentCameraIndex!) with data: \(currentCameraData)")
+                            #endif
                             if let camera = createNVRCamera(from: currentCameraData) {
                                 cameras.append(camera)
+                                #if DEBUG
+                                logger.debug("✅ Successfully created camera \(currentCameraIndex!): '\(camera.name)'")
+                                #endif
                             } else {
                                 #if DEBUG
                                     logger.warning(
@@ -719,6 +732,9 @@ class CameraAPIService: ObservableObject {
                         currentCameraData = [:]
                     }
                     currentCameraData[propertyPath] = value
+                    #if DEBUG
+                    logger.debug("📝 Camera[\(index)] property: \(propertyPath) = \(value)")
+                    #endif
                 }
             }
         }
@@ -762,9 +778,15 @@ class CameraAPIService: ObservableObject {
         }
 
         let controlID = data["ControlID"] ?? ""
-        let name = data["Name"] ?? "Unknown Camera"
+        let name = data["DeviceInfo.Name"] ?? "Unknown Camera"
         let type = data["Type"] ?? "Unknown"
         let videoStream = data["VideoStream"] ?? "Main"
+
+        #if DEBUG
+        logger.debug("🏷️ Camera name extraction:")
+        logger.debug("   → data[\"DeviceInfo.Name\"]: \(data["DeviceInfo.Name"] ?? "nil")")
+        logger.debug("   → final name: '\(name)'")
+        #endif
 
         let deviceInfo = DeviceInfo(
             enable: data["DeviceInfo.Enable"].flatMap({ Bool($0) }) ?? true,

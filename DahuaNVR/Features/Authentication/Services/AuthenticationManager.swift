@@ -83,6 +83,13 @@ final class AuthenticationManager: ObservableObject {
             currentCredentials = nvrSystem.credentials
             await saveAuthData(credentials: nvrSystem.credentials)
             nvrManager.selectNVR(nvrSystem)
+            
+            // Update authService state to trigger navigation
+            await authService.authenticate(
+                serverURL: nvrSystem.credentials.serverURL,
+                username: nvrSystem.credentials.username,
+                password: nvrSystem.credentials.password
+            )
         } else {
             if let error = authResult.httpCGI.error {
                 throw error
