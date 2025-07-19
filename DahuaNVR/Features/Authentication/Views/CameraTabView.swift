@@ -80,16 +80,6 @@ struct CameraTabView: View {
             }
             .navigationTitle("Cameras")
             .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Refresh") {
-                        Task {
-                            await fetchCamerasWithCredentials()
-                        }
-                    }
-                    .disabled(cameraService.isLoading)
-                }
-            }
             .sheet(item: Binding<CameraDetailIdentifier?>(
                 get: {
                     guard let deviceID = selectedCameraDeviceID,
@@ -113,10 +103,16 @@ struct CameraTabView: View {
     }
     
     private func fetchCamerasWithCredentials() async {
+        // Prevent concurrent requests
         await MainActor.run {
+            guard !cameraService.isLoading else { return }
             cameraService.isLoading = true
             cameraService.errorMessage = nil
         }
+        
+        // Check if we're still supposed to be loading (might have been cancelled)
+        let shouldProceed = await MainActor.run { cameraService.isLoading }
+        guard shouldProceed else { return }
         
         guard let credentials = AuthenticationManager.shared.currentCredentials else {
             await MainActor.run {
@@ -128,6 +124,8 @@ struct CameraTabView: View {
         
         let fetchedCameras = await cameraService.fetchCameras(with: credentials)
         await MainActor.run {
+            // Only update if we're still in loading state (not cancelled by another call)
+            guard cameraService.isLoading else { return }
             cameraService.cameras = fetchedCameras
             cameraService.isLoading = false
         }
