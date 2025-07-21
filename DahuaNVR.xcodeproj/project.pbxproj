@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		B369E6662E2E442B009CA00C /* BigInt in Frameworks */ = {isa = PBXBuildFile; productRef = B369E6652E2E442B009CA00C /* BigInt */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		B367A76D2E241C7E00DFC31C /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -65,6 +69,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B369E6662E2E442B009CA00C /* BigInt in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -91,6 +96,7 @@
 				B367A7612E241C7D00DFC31C /* DahuaNVR */,
 				B367A76F2E241C7E00DFC31C /* DahuaNVRTests */,
 				B367A7792E241C7E00DFC31C /* DahuaNVRUITests */,
+				B369E6642E2E442B009CA00C /* Frameworks */,
 				B367A7602E241C7D00DFC31C /* Products */,
 			);
 			sourceTree = "<group>";
@@ -103,6 +109,13 @@
 				B367A7762E241C7E00DFC31C /* DahuaNVRUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		B369E6642E2E442B009CA00C /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -125,6 +138,7 @@
 			);
 			name = DahuaNVR;
 			packageProductDependencies = (
+				B369E6652E2E442B009CA00C /* BigInt */,
 			);
 			productName = DahuaNVR;
 			productReference = B367A75F2E241C7D00DFC31C /* DahuaNVR.app */;
@@ -208,6 +222,9 @@
 			);
 			mainGroup = B367A7562E241C7D00DFC31C;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				B353963B2E2E3E3600853C75 /* XCRemoteSwiftPackageReference "BigInt" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = B367A7602E241C7D00DFC31C /* Products */;
 			projectDirPath = "";
@@ -569,6 +586,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		B353963B2E2E3E3600853C75 /* XCRemoteSwiftPackageReference "BigInt" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/attaswift/BigInt";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.1.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B369E6652E2E442B009CA00C /* BigInt */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B353963B2E2E3E3600853C75 /* XCRemoteSwiftPackageReference "BigInt" */;
+			productName = BigInt;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = B367A7572E241C7D00DFC31C /* Project object */;
 }
