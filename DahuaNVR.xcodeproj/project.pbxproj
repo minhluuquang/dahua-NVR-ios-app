@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		B369E6662E2E442B009CA00C /* BigInt in Frameworks */ = {isa = PBXBuildFile; productRef = B369E6652E2E442B009CA00C /* BigInt */; };
+		B369E6ED2E2EBBFE009CA00C /* CryptoSwift.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = B369E6EC2E2EBBCA009CA00C /* CryptoSwift.xcframework */; };
+		B369E6EE2E2EBBFE009CA00C /* CryptoSwift.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = B369E6EC2E2EBBCA009CA00C /* CryptoSwift.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -27,10 +29,25 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		B369E6EF2E2EBBFE009CA00C /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				B369E6EE2E2EBBFE009CA00C /* CryptoSwift.xcframework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		B367A75F2E241C7D00DFC31C /* DahuaNVR.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DahuaNVR.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B367A76C2E241C7E00DFC31C /* DahuaNVRTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DahuaNVRTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B367A7762E241C7E00DFC31C /* DahuaNVRUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DahuaNVRUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B369E6EC2E2EBBCA009CA00C /* CryptoSwift.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = CryptoSwift.xcframework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -69,6 +86,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B369E6ED2E2EBBFE009CA00C /* CryptoSwift.xcframework in Frameworks */,
 				B369E6662E2E442B009CA00C /* BigInt in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -114,6 +132,7 @@
 		B369E6642E2E442B009CA00C /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				B369E6EC2E2EBBCA009CA00C /* CryptoSwift.xcframework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -128,6 +147,7 @@
 				B367A75B2E241C7D00DFC31C /* Sources */,
 				B367A75C2E241C7D00DFC31C /* Frameworks */,
 				B367A75D2E241C7D00DFC31C /* Resources */,
+				B369E6EF2E2EBBFE009CA00C /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
