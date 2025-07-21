@@ -1,5 +1,4 @@
 import Foundation
-import CryptoSwift
 
 struct AppConfiguration {
     static let defaultServerURL: String = {
