@@ -42,6 +42,13 @@ class RPCService {
         try await rpcLogin.login(username: username, password: password)
         
         #if DEBUG
+        logger.debug("RPC login successful, fetching encryption info")
+        #endif
+        
+        // Fetch encryption info immediately after login to configure RSA keys
+        _ = try await security.getEncryptInfo()
+        
+        #if DEBUG
         logger.debug("RPC authentication completed successfully")
         #endif
     }
