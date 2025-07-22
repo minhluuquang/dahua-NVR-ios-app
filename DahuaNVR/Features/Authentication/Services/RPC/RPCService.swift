@@ -17,6 +17,10 @@ class RPCService {
         MagicBoxRPC(rpcBase: rpcBase)
     }()
     
+    lazy var security: SecurityRPC = {
+        SecurityRPC(base: rpcBase)
+    }()
+    
     init(baseURL: String) {
         self.rpcBase = RPCBase(baseURL: baseURL)
         self.rpcLogin = RPCLogin(rpcBase: rpcBase)

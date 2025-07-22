@@ -118,6 +118,25 @@ class DualProtocolService {
     }
     
     private func authenticateRPC(credentials: NVRCredentials) async throws {
+        // Fetch encryption info before authenticating
+        #if DEBUG
+        logger.debug("Fetching encryption info before RPC authentication")
+        #endif
+        
+        do {
+            let encryptInfo = try await rpcService.security.getEncryptInfo()
+            #if DEBUG
+            logger.debug("Successfully retrieved encryption info - Asymmetric: \(encryptInfo.asymmetric)")
+            #endif
+        } catch {
+            #if DEBUG
+            logger.error("Failed to get encryption info: \(error.localizedDescription)")
+            logger.debug("Continuing with authentication anyway...")
+            #endif
+            // Continue with authentication even if getEncryptInfo fails
+            // Some older NVRs might not support this endpoint
+        }
+        
         try await rpcService.authenticate(username: credentials.username, password: credentials.password)
     }
     

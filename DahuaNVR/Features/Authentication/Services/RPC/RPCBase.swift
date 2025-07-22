@@ -133,8 +133,11 @@ class RPCBase {
         
         #if DEBUG
         logger.debug("🚀 RPC Call: \(method)")
+        logger.debug("   → Full URL: \(url.absoluteString)")
         logger.debug("   → Endpoint: \(baseURL)\(endpoint)")
         logger.debug("   → Session ID: \(sessionID ?? "none")")
+        logger.debug("   → Use Login Endpoint: \(useLoginEndpoint)")
+        logger.debug("   → Include Session: \(includeSession)")
         
         if let params = params {
             logger.debug("   → Parameters: \(params)")
@@ -198,8 +201,22 @@ class RPCBase {
             #if DEBUG
             let networkErrorDuration = Date().timeIntervalSince(startTime)
             logger.error("❌ RPC Network Error: \(method)")
+            logger.error("   → Full URL: \(url.absoluteString)")
             logger.error("   → Error: \(error.localizedDescription)")
+            logger.error("   → Error Type: \(type(of: error))")
             logger.error("   → Duration: \(String(format: "%.3f", networkErrorDuration))s")
+            
+            // Log the request that failed
+            if let requestData = urlRequest.httpBody,
+               let requestString = String(data: requestData, encoding: .utf8) {
+                logger.error("   → Failed Request Body: \(requestString)")
+            }
+            
+            // Check for specific network errors
+            if let urlError = error as? URLError {
+                logger.error("   → URLError Code: \(urlError.code.rawValue)")
+                logger.error("   → URLError Description: \(urlError.localizedDescription)")
+            }
             #endif
             throw error
         }
@@ -232,8 +249,11 @@ class RPCBase {
         
         #if DEBUG
         logger.debug("🚀 RPC Call: \(method)")
+        logger.debug("   → Full URL: \(url.absoluteString)")
         logger.debug("   → Endpoint: \(baseURL)\(endpoint)")
         logger.debug("   → Session ID: \(sessionID ?? "none")")
+        logger.debug("   → Use Login Endpoint: \(useLoginEndpoint)")
+        logger.debug("   → Include Session: \(includeSession)")
         
         if let params = params {
             logger.debug("   → Parameters: \(params)")
@@ -318,8 +338,22 @@ class RPCBase {
             #if DEBUG
             let networkErrorDuration = Date().timeIntervalSince(startTime)
             logger.error("❌ RPC Network Error: \(method)")
+            logger.error("   → Full URL: \(url.absoluteString)")
             logger.error("   → Error: \(error.localizedDescription)")
+            logger.error("   → Error Type: \(type(of: error))")
             logger.error("   → Duration: \(String(format: "%.3f", networkErrorDuration))s")
+            
+            // Log the request that failed
+            if let requestData = urlRequest.httpBody,
+               let requestString = String(data: requestData, encoding: .utf8) {
+                logger.error("   → Failed Request Body: \(requestString)")
+            }
+            
+            // Check for specific network errors
+            if let urlError = error as? URLError {
+                logger.error("   → URLError Code: \(urlError.code.rawValue)")
+                logger.error("   → URLError Description: \(urlError.localizedDescription)")
+            }
             #endif
             throw error
         }
@@ -362,6 +396,120 @@ class RPCBase {
     
     var hasActiveSession: Bool {
         return sessionID != nil
+    }
+    
+    // Special method for OutsideCmd endpoint
+    func sendOutsideCmd<T: Codable>(method: String, params: [String: AnyJSON]? = nil, responseType: T.Type) async throws -> RPCResponse<T> {
+        let startTime = Date()
+        let request = RPCRequest(method: method, params: params, id: nextRequestID())
+        
+        let url = URL(string: "\(baseURL)/OutsideCmd")!
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("application/json, text/javascript, */*; q=0.01", forHTTPHeaderField: "Accept")
+        urlRequest.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
+        
+        #if DEBUG
+        logger.debug("🚀 OutsideCmd RPC Call: \(method)")
+        logger.debug("   → Full URL: \(url.absoluteString)")
+        logger.debug("   → Request ID: \(request.id ?? 0)")
+        #endif
+        
+        do {
+            let requestData = try JSONEncoder().encode(request)
+            urlRequest.httpBody = requestData
+            
+            #if DEBUG
+            if let requestString = String(data: requestData, encoding: .utf8) {
+                logger.debug("OutsideCmd Request Body: \(requestString)")
+            }
+            #endif
+            
+            let (data, response) = try await urlSession.data(for: urlRequest)
+            
+            #if DEBUG
+            let responseDuration = Date().timeIntervalSince(startTime)
+            if let httpResponse = response as? HTTPURLResponse {
+                logger.debug("✅ OutsideCmd Response: \(method)")
+                logger.debug("   → Status: \(httpResponse.statusCode)")
+                logger.debug("   → Duration: \(String(format: "%.3f", responseDuration))s")
+                if let responseString = String(data: data, encoding: .utf8) {
+                    logger.debug("   → Response: \(responseString)")
+                }
+            }
+            #endif
+            
+            let rpcResponse = try JSONDecoder().decode(RPCResponse<T>.self, from: data)
+            return rpcResponse
+            
+        } catch {
+            #if DEBUG
+            let networkErrorDuration = Date().timeIntervalSince(startTime)
+            logger.error("❌ OutsideCmd Network Error: \(method)")
+            logger.error("   → Full URL: \(url.absoluteString)")
+            logger.error("   → Error: \(error.localizedDescription)")
+            logger.error("   → Duration: \(String(format: "%.3f", networkErrorDuration))s")
+            #endif
+            throw error
+        }
+    }
+    
+    // Special method for OutsideCmd endpoint that decodes directly (not wrapped in RPCResponse)
+    func sendOutsideCmdDirect<T: Codable>(method: String, params: [String: AnyJSON]? = nil, responseType: T.Type) async throws -> T {
+        let startTime = Date()
+        let request = RPCRequest(method: method, params: params, id: nextRequestID())
+        
+        let url = URL(string: "\(baseURL)/OutsideCmd")!
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("application/json, text/javascript, */*; q=0.01", forHTTPHeaderField: "Accept")
+        urlRequest.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
+        
+        #if DEBUG
+        logger.debug("🚀 OutsideCmd Direct Call: \(method)")
+        logger.debug("   → Full URL: \(url.absoluteString)")
+        logger.debug("   → Request ID: \(request.id ?? 0)")
+        #endif
+        
+        do {
+            let requestData = try JSONEncoder().encode(request)
+            urlRequest.httpBody = requestData
+            
+            #if DEBUG
+            if let requestString = String(data: requestData, encoding: .utf8) {
+                logger.debug("OutsideCmd Direct Request Body: \(requestString)")
+            }
+            #endif
+            
+            let (data, response) = try await urlSession.data(for: urlRequest)
+            
+            #if DEBUG
+            let responseDuration = Date().timeIntervalSince(startTime)
+            if let httpResponse = response as? HTTPURLResponse {
+                logger.debug("✅ OutsideCmd Direct Response: \(method)")
+                logger.debug("   → Status: \(httpResponse.statusCode)")
+                logger.debug("   → Duration: \(String(format: "%.3f", responseDuration))s")
+                if let responseString = String(data: data, encoding: .utf8) {
+                    logger.debug("   → Response: \(responseString)")
+                }
+            }
+            #endif
+            
+            let directResponse = try JSONDecoder().decode(T.self, from: data)
+            return directResponse
+            
+        } catch {
+            #if DEBUG
+            let networkErrorDuration = Date().timeIntervalSince(startTime)
+            logger.error("❌ OutsideCmd Direct Network Error: \(method)")
+            logger.error("   → Full URL: \(url.absoluteString)")
+            logger.error("   → Error: \(error.localizedDescription)")
+            logger.error("   → Duration: \(String(format: "%.3f", networkErrorDuration))s")
+            #endif
+            throw error
+        }
     }
 }
 

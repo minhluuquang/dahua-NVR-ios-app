@@ -10,6 +10,9 @@
 		B369E6662E2E442B009CA00C /* BigInt in Frameworks */ = {isa = PBXBuildFile; productRef = B369E6652E2E442B009CA00C /* BigInt */; };
 		B369E6ED2E2EBBFE009CA00C /* CryptoSwift.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = B369E6EC2E2EBBCA009CA00C /* CryptoSwift.xcframework */; };
 		B369E6EE2E2EBBFE009CA00C /* CryptoSwift.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = B369E6EC2E2EBBCA009CA00C /* CryptoSwift.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		B369E6FF2E2ED9D4009CA00C /* HaishinKit in Frameworks */ = {isa = PBXBuildFile; productRef = B369E6FE2E2ED9D4009CA00C /* HaishinKit */; };
+		B369E7012E2ED9D4009CA00C /* MoQTHaishinKit in Frameworks */ = {isa = PBXBuildFile; productRef = B369E7002E2ED9D4009CA00C /* MoQTHaishinKit */; };
+		B369E7032E2ED9D4009CA00C /* SRTHaishinKit in Frameworks */ = {isa = PBXBuildFile; productRef = B369E7022E2ED9D4009CA00C /* SRTHaishinKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -87,7 +90,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				B369E6ED2E2EBBFE009CA00C /* CryptoSwift.xcframework in Frameworks */,
+				B369E7032E2ED9D4009CA00C /* SRTHaishinKit in Frameworks */,
+				B369E6FF2E2ED9D4009CA00C /* HaishinKit in Frameworks */,
 				B369E6662E2E442B009CA00C /* BigInt in Frameworks */,
+				B369E7012E2ED9D4009CA00C /* MoQTHaishinKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -159,6 +165,9 @@
 			name = DahuaNVR;
 			packageProductDependencies = (
 				B369E6652E2E442B009CA00C /* BigInt */,
+				B369E6FE2E2ED9D4009CA00C /* HaishinKit */,
+				B369E7002E2ED9D4009CA00C /* MoQTHaishinKit */,
+				B369E7022E2ED9D4009CA00C /* SRTHaishinKit */,
 			);
 			productName = DahuaNVR;
 			productReference = B367A75F2E241C7D00DFC31C /* DahuaNVR.app */;
@@ -244,6 +253,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				B353963B2E2E3E3600853C75 /* XCRemoteSwiftPackageReference "BigInt" */,
+				B369E6FD2E2ED9BF009CA00C /* XCRemoteSwiftPackageReference "HaishinKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = B367A7602E241C7D00DFC31C /* Products */;
@@ -616,6 +626,14 @@
 				minimumVersion = 5.1.0;
 			};
 		};
+		B369E6FD2E2ED9BF009CA00C /* XCRemoteSwiftPackageReference "HaishinKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/shogo4405/HaishinKit.swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.9;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -623,6 +641,21 @@
 			isa = XCSwiftPackageProductDependency;
 			package = B353963B2E2E3E3600853C75 /* XCRemoteSwiftPackageReference "BigInt" */;
 			productName = BigInt;
+		};
+		B369E6FE2E2ED9D4009CA00C /* HaishinKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B369E6FD2E2ED9BF009CA00C /* XCRemoteSwiftPackageReference "HaishinKit" */;
+			productName = HaishinKit;
+		};
+		B369E7002E2ED9D4009CA00C /* MoQTHaishinKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B369E6FD2E2ED9BF009CA00C /* XCRemoteSwiftPackageReference "HaishinKit" */;
+			productName = MoQTHaishinKit;
+		};
+		B369E7022E2ED9D4009CA00C /* SRTHaishinKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B369E6FD2E2ED9BF009CA00C /* XCRemoteSwiftPackageReference "HaishinKit" */;
+			productName = SRTHaishinKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
