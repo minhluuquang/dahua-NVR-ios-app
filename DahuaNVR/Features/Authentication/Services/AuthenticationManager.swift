@@ -1,6 +1,17 @@
 import Foundation
 import Combine
 
+enum AuthError: LocalizedError {
+    case authenticationFailed
+    
+    var errorDescription: String? {
+        switch self {
+        case .authenticationFailed:
+            return "Authentication failed"
+        }
+    }
+}
+
 @MainActor
 final class AuthenticationManager: ObservableObject {
     static let shared = AuthenticationManager()
@@ -8,59 +19,20 @@ final class AuthenticationManager: ObservableObject {
     @Published private(set) var authenticationState: AuthenticationState = .idle
     @Published private(set) var currentCredentials: NVRCredentials?
     
-    private let authService = DahuaNVRAuthService()
-    private var dualProtocolService: DualProtocolService?
+    private var rpcAuthService: RPCAuthenticationService?
     private let keychainHelper = KeychainHelper.shared
     private let authDataKey = "dahua_nvr_auth_data"
-    
-    private var cancellables = Set<AnyCancellable>()
     
     let nvrManager = NVRManager()
     
     private init() {
-        bindAuthService()
         loadPersistedAuth()
     }
     
-    private func bindAuthService() {
-        Publishers.CombineLatest3(
-            authService.$isAuthenticated,
-            authService.$isLoading,
-            authService.$errorMessage
-        )
-        .map { isAuthenticated, isLoading, errorMessage in
-            if isLoading {
-                return AuthenticationState.loading
-            } else if isAuthenticated {
-                return AuthenticationState.authenticated
-            } else if let errorMessage = errorMessage {
-                return AuthenticationState.failed(errorMessage)
-            } else {
-                return AuthenticationState.idle
-            }
-        }
-        .receive(on: DispatchQueue.main)
-        .assign(to: \.authenticationState, on: self)
-        .store(in: &cancellables)
-    }
-    
-    func login(with credentials: NVRCredentials) async throws {
-        await authService.authenticate(
-            serverURL: credentials.serverURL,
-            username: credentials.username,
-            password: credentials.password
-        )
-        
-        if authenticationState == .authenticated {
-            await saveAuthData(credentials: credentials)
-            currentCredentials = credentials
-        }
-    }
-    
     func connectToNVR(_ nvrSystem: NVRSystem) async throws {
-        dualProtocolService = DualProtocolService(baseURL: nvrSystem.credentials.serverURL)
+        authenticationState = .loading
         
-        let authResult = await dualProtocolService!.authenticate(credentials: nvrSystem.credentials)
+        try await performAuthentication(with: nvrSystem.credentials)
         
         // Ensure the NVR system exists in the list before updating status
         if !nvrManager.nvrSystems.contains(where: { $0.id == nvrSystem.id }) {
@@ -72,26 +44,32 @@ final class AuthenticationManager: ObservableObject {
         
         nvrManager.updateAuthenticationStatus(
             for: nvrSystem.id,
-            rpcSuccess: authResult.rpc.success,
-            httpCGISuccess: authResult.httpCGI.success
+            rpcSuccess: true
         )
         
-        if authResult.httpCGI.success {
-            #if DEBUG
-            print("🔍 [AuthManager] HTTP CGI auth success, selecting NVR: \(nvrSystem.name)")
-            #endif
-            currentCredentials = nvrSystem.credentials
-            await saveAuthData(credentials: nvrSystem.credentials)
-            nvrManager.selectNVR(nvrSystem)
-            
-            // Update authService state to trigger navigation
-            await authService.authenticate(
-                serverURL: nvrSystem.credentials.serverURL,
-                username: nvrSystem.credentials.username,
-                password: nvrSystem.credentials.password
-            )
+        #if DEBUG
+        print("🔍 [AuthManager] RPC auth success, selecting NVR: \(nvrSystem.name)")
+        #endif
+        
+        nvrManager.selectNVR(nvrSystem)
+        authenticationState = .authenticated
+    }
+    
+    // Private core authentication method
+    private func performAuthentication(with credentials: NVRCredentials) async throws {
+        // Reuse existing service if it's for the same server, otherwise create new
+        if rpcAuthService == nil || rpcAuthService?.baseURL != credentials.serverURL {
+            rpcAuthService = RPCAuthenticationService(baseURL: credentials.serverURL)
+        }
+        
+        let authResult = await rpcAuthService!.authenticate(with: credentials)
+        
+        if authResult.success {
+            currentCredentials = credentials
+            await saveAuthData(credentials: credentials)
         } else {
-            if let error = authResult.httpCGI.error {
+            authenticationState = .failed(authResult.error?.localizedDescription ?? "Authentication failed")
+            if let error = authResult.error {
                 throw error
             } else {
                 throw AuthError.authenticationFailed
@@ -112,9 +90,10 @@ final class AuthenticationManager: ObservableObject {
     }
     
     func logout() async {
-        authService.logout()
+        authenticationState = .idle
         await clearPersistedAuth()
         currentCredentials = nil
+        rpcAuthService = nil
     }
     
     func attemptAutoLogin() async {
@@ -124,15 +103,10 @@ final class AuthenticationManager: ObservableObject {
             return
         }
         
-        await authService.authenticate(
-            serverURL: persistedAuth.credentials.serverURL,
-            username: persistedAuth.credentials.username,
-            password: persistedAuth.credentials.password
-        )
-        
-        if authenticationState == .authenticated {
-            currentCredentials = persistedAuth.credentials
-        } else {
+        do {
+            try await performAuthentication(with: persistedAuth.credentials)
+            authenticationState = .authenticated
+        } catch {
             await clearPersistedAuth()
         }
     }
@@ -142,15 +116,8 @@ final class AuthenticationManager: ObservableObject {
             throw AuthError.authenticationFailed
         }
         
-        await authService.authenticate(
-            serverURL: credentials.serverURL,
-            username: credentials.username,
-            password: credentials.password
-        )
-        
-        if authenticationState == .authenticated {
-            await saveAuthData(credentials: credentials)
-        }
+        try await performAuthentication(with: credentials)
+        authenticationState = .authenticated
     }
     
     private func loadPersistedAuth() {
@@ -200,25 +167,24 @@ final class AuthenticationManager: ObservableObject {
         keychainHelper.exists(forKey: authDataKey)
     }
     
-    var httpCGIService: CameraAPIService? {
-        return dualProtocolService?.httpCGI
+    var cameraService: RPCAuthenticationService? {
+        return rpcAuthService
     }
     
     var rpcService: RPCService? {
-        return dualProtocolService?.rpc
+        return rpcAuthService?.rpc
     }
     
-    var isDualProtocolAvailable: Bool {
-        return dualProtocolService?.isFullyAuthenticated ?? false
+    var isRPCAvailable: Bool {
+        return rpcAuthService != nil
     }
     
     var authenticationStatusText: String {
-        return dualProtocolService?.authenticationStatus ?? "Not connected"
+        return isRPCAvailable ? "RPC Connected" : "Not connected"
     }
     
     func disconnect() async {
-        await dualProtocolService?.disconnect()
         await logout()
-        dualProtocolService = nil
+        rpcAuthService = nil
     }
 }

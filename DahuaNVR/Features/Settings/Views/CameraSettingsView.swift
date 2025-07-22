@@ -77,16 +77,18 @@ enum CameraSettingsSection: CaseIterable {
 }
 
 struct CameraListView: View {
-    @StateObject private var cameraAPIService = CameraAPIService()
+    @State private var cameras: [NVRCamera] = []
+    @State private var isLoading = false
+    @State private var errorMessage: String?
     @State private var showingAddCamera = false
     @State private var showingSearchDevices = false
     
     var body: some View {
         Group {
-            if cameraAPIService.isLoading {
+            if isLoading {
                 ProgressView("Loading cameras...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let errorMessage = cameraAPIService.errorMessage {
+            } else if let errorMessage = errorMessage {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 48))
@@ -102,7 +104,7 @@ struct CameraListView: View {
                     
                     Button("Retry") {
                         Task {
-                            await fetchCamerasWithCredentials()
+                            await fetchCamerasRPC()
                         }
                     }
                     .buttonStyle(.borderedProminent)
@@ -110,7 +112,7 @@ struct CameraListView: View {
                 .padding()
             } else {
                 List {
-                    ForEach(cameraAPIService.cameras) { nvrCamera in
+                    ForEach(cameras) { nvrCamera in
                         NavigationLink(destination: NVRCameraDetailView(camera: nvrCamera)) {
                             NVRCameraCardView(camera: nvrCamera)
                         }
@@ -125,7 +127,7 @@ struct CameraListView: View {
                 Menu {
                     Button("Refresh") {
                         Task {
-                            await fetchCamerasWithCredentials()
+                            await fetchCamerasRPC()
                         }
                     }
                     Button("Add Device") {
@@ -146,28 +148,36 @@ struct CameraListView: View {
             SearchDevicesView()
         }
         .task {
-            await fetchCamerasWithCredentials()
+            await fetchCamerasRPC()
         }
     }
     
-    private func fetchCamerasWithCredentials() async {
+    private func fetchCamerasRPC() async {
         await MainActor.run {
-            cameraAPIService.isLoading = true
-            cameraAPIService.errorMessage = nil
+            isLoading = true
+            errorMessage = nil
         }
         
-        guard let credentials = AuthenticationManager.shared.currentCredentials else {
+        guard let rpcService = AuthenticationManager.shared.rpcService,
+              rpcService.hasActiveSession else {
             await MainActor.run {
-                cameraAPIService.isLoading = false
-                cameraAPIService.errorMessage = "Authentication required. Please login first."
+                isLoading = false
+                errorMessage = "No active RPC connection to NVR system."
             }
             return
         }
         
-        let fetchedCameras = await cameraAPIService.fetchCameras(with: credentials)
-        await MainActor.run {
-            cameraAPIService.cameras = fetchedCameras
-            cameraAPIService.isLoading = false
+        do {
+            let fetchedCameras = try await rpcService.camera.getAllCameras()
+            await MainActor.run {
+                cameras = fetchedCameras
+                isLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                isLoading = false
+                errorMessage = "Failed to load cameras: \(error.localizedDescription)"
+            }
         }
     }
     
@@ -220,7 +230,12 @@ struct NVRCameraCardView: View {
 }
 
 struct NVRCameraDetailView: View {
-    let camera: NVRCamera
+    @State private var camera: NVRCamera
+    @State private var showingEditSheet = false
+    
+    init(camera: NVRCamera) {
+        self._camera = State(initialValue: camera)
+    }
     
     var body: some View {
         Form {
@@ -306,6 +321,16 @@ struct NVRCameraDetailView: View {
         }
         .navigationTitle("Camera Details")
         .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Edit") {
+                    showingEditSheet = true
+                }
+            }
+        }
+        .sheet(isPresented: $showingEditSheet) {
+            CameraEditSheet(camera: $camera)
+        }
     }
 }
 

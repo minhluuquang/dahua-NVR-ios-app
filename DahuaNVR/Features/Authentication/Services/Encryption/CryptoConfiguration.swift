@@ -112,4 +112,38 @@ public final class CryptoConfiguration {
             Self.logger.debug("Reset crypto configuration")
         }
     }
+    
+    #if DEBUG
+    public func resetSync() {
+        queue.sync(flags: .barrier) { [weak self] in
+            self?._asymmetric = nil
+            self?._cipher = []
+            self?._publicKey = nil
+            self?._parsedModulus = nil
+            self?._parsedExponent = nil
+            Self.logger.debug("Reset crypto configuration synchronously")
+        }
+    }
+    
+    public func updateSync(asymmetric: String? = nil, cipher: [String]? = nil, publicKey: String? = nil) {
+        queue.sync(flags: .barrier) { [weak self] in
+            guard let self = self else { return }
+            
+            if let asymmetric = asymmetric {
+                self._asymmetric = asymmetric
+                Self.logger.debug("Updated asymmetric algorithm: \(asymmetric)")
+            }
+            
+            if let cipher = cipher {
+                self._cipher = cipher
+                Self.logger.debug("Updated cipher list: \(cipher.joined(separator: ", "))")
+            }
+            
+            if let publicKey = publicKey {
+                self._publicKey = publicKey
+                self.parsePublicKey(publicKey)
+            }
+        }
+    }
+    #endif
 }

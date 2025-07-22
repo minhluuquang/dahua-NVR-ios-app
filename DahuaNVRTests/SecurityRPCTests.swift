@@ -29,19 +29,16 @@ struct SecurityRPCTests {
     }
     
     @Test("CryptoConfiguration public key parsing")
-    func testCryptoConfigurationParsing() {
+    func testCryptoConfigurationParsing() throws {
         // Reset crypto configuration first
-        CryptoConfiguration.shared.reset()
+        CryptoConfiguration.shared.resetSync()
         
         // Update with a valid RSA public key
-        CryptoConfiguration.shared.update(
+        CryptoConfiguration.shared.updateSync(
             asymmetric: "RSA",
             cipher: ["AES", "RPAC"],
             publicKey: "N:123,E:010001"
         )
-        
-        // Give it time to update (it's async)
-        Thread.sleep(forTimeInterval: 0.1)
         
         // Verify values were set
         #expect(CryptoConfiguration.shared.asymmetric == "RSA")
@@ -51,6 +48,6 @@ struct SecurityRPCTests {
         #expect(CryptoConfiguration.shared.parsedExponent != nil)
         
         // Clean up
-        CryptoConfiguration.shared.reset()
+        CryptoConfiguration.shared.resetSync()
     }
 }

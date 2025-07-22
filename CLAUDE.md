@@ -3,178 +3,143 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
-This is a SwiftUI-based iOS application for Dahua NVR (Network Video Recorder) management with **dual protocol support** (HTTP CGI + RPC). The project is a standard iOS app created with Xcode 16+ using the modern Swift Testing framework. The application implements both Dahua's legacy HTTP CGI and modern RPC (Remote Procedure Call) interfaces, providing developers with full protocol flexibility. Always refers to related information in @PRD.md, @app-flow.md, and @RPC_plan.md files.
 
-### Architecture
-- **Dual Protocol Implementation**: Both HTTP CGI and RPC authentication established during connection
-- **Developer Choice**: Explicit protocol selection (HTTP CGI or RPC) for each operation
-- **No Automatic Fallback**: Independent protocol management for maximum control
-- **Modular RPC Design**: Type-safe, module-based RPC implementation
+DahuaNVR is a production-ready SwiftUI iOS application for Dahua Network Video Recorder (NVR) management. The app features a modern RPC-only architecture with robust security, comprehensive encryption, and seamless camera management capabilities for professional surveillance systems.
 
-## Build Commands
-```bash
-# Build the app (Debug configuration)
-xcodebuild -project DahuaNVR.xcodeproj -scheme DahuaNVR -configuration Debug build
+## Tech Stack
 
-# Build for Release
-xcodebuild -project DahuaNVR.xcodeproj -scheme DahuaNVR -configuration Release build
-
-# Build and run tests
-xcodebuild test -project DahuaNVR.xcodeproj -scheme DahuaNVR -destination 'platform=iOS Simulator,name=iPhone 15'
-
-# Run only unit tests
-xcodebuild test -project DahuaNVR.xcodeproj -scheme DahuaNVR -destination 'platform=iOS Simulator,name=iPhone 15' -only-testing:DahuaNVRTests
-
-# Run only UI tests  
-xcodebuild test -project DahuaNVR.xcodeproj -scheme DahuaNVR -destination 'platform=iOS Simulator,name=iPhone 15' -only-testing:DahuaNVRUITests
-```
+- **Platform**: iOS 18.5+
+- **Language**: Swift 6.1.2
+- **UI Framework**: SwiftUI (declarative UI)
+- **Architecture**: MVVM with RPC-only communication
+- **Testing**: Swift Testing Framework (modern, not XCTest)
+- **Security**: Keychain Services, RSA/AES hybrid encryption
+- **Dependencies**: BigInt, CryptoSwift, HaishinKit
+- **Development Tool**: Xcode 16+
 
 ## Project Structure
-- **DahuaNVR/**: Main app source code
-  - **App/**: Application entry point
-    - `DahuaNVRApp.swift`: Main app entry point with `@main` attribute
-  - **Configuration/**: App configuration
-    - `AppConfiguration.swift`: Application configuration settings
-  - **Features/**: Feature-based organization
-    - **Authentication/**: User authentication system with dual protocol support
-      - **Models/**: Authentication data models
-        - `AuthenticationState`: App authentication state management
-        - `NVRCredentials`: User credentials for NVR connection
-        - `PersistedAuthData`: Keychain-stored authentication data
-        - `NVRSystem`: NVR system model with dual auth status tracking
-      - **Services/**: Authentication and communication services
-        - `AuthenticationManager`: Central authentication orchestration
-        - `DahuaNVRAuthService`: Legacy HTTP CGI authentication
-        - `KeychainHelper`: Secure credential storage
-        - `DualProtocolService`: **NEW** - Parallel HTTP CGI + RPC authentication
-        - `NVRManager`: NVR system management with dual auth status
-        - **RPC/**: **NEW** - Complete RPC implementation
-          - `RPCBase.swift`: Core RPC communication infrastructure
-          - `RPCLogin.swift`: Two-stage RPC authentication with keep-alive
-          - `RPCService.swift`: Main RPC service coordinator
-          - `RPCTypes.swift`: Type-safe RPC data structures
-          - **Modules/**: RPC functional modules
-            - `ConfigManagerRPC.swift`: Configuration management via RPC
-            - `SystemRPC.swift`: System information and control via RPC
-      - **ViewModels/**: Authentication view models (`ContentViewModel`, `LoginViewModel`)
-      - **Views/**: Authentication UI
-        - `ContentView`: Main app entry view
-        - `LoginView`: User authentication interface
-        - `MainAppView`: **NEW** - Main application interface with tab navigation
-        - `NVRListView`: **NEW** - NVR system selection and management
-        - `CameraTabView`: **NEW** - Camera listing and management
-    - **Settings/**: Application settings with dual protocol support
-      - **Services/**: Settings-related services
-        - `CameraAPIService`: Enhanced camera API with comprehensive logging
-      - **Views/**: Settings UI components
-        - `SettingsDashboardView`: Main settings interface
-        - `CameraSettingsView`: **NEW** - Camera-specific settings
-    - **Shared/**: Shared UI components
-      - **Views/**: Reusable UI components (`SettingsRowView`)
-  - **Assets.xcassets/**: App icons and visual assets
-  - `Info.plist`: App configuration plist
-- **DahuaNVRTests/**: Unit tests using Swift Testing framework
-  - `RPCTests.swift`: **NEW** - Comprehensive RPC functionality tests
-- **DahuaNVRUITests/**: UI automation tests
 
-## Testing Framework
-This project uses the modern **Swift Testing** framework (not XCTest). Tests are written with:
-- `@Test` attribute for test functions
-- `#expect(...)` for assertions
-- `@testable import DahuaNVR` for accessing internal app code
+```
+DahuaNVR/
+├── App/
+│   └── DahuaNVRApp.swift                 # Main app entry point
+├── Configuration/
+│   └── AppConfiguration.swift           # App configuration settings
+├── Features/
+│   ├── Authentication/
+│   │   ├── Models/                      # Data models (AuthenticationState, NVRCredentials)
+│   │   ├── Services/                    # Core business logic
+│   │   │   ├── AuthenticationManager.swift      # Central auth orchestration
+│   │   │   ├── RPCAuthenticationService.swift   # RPC-only auth service
+│   │   │   ├── KeychainHelper.swift             # Secure credential storage
+│   │   │   ├── RPC/                             # Complete RPC implementation
+│   │   │   │   ├── RPCBase.swift                # Core RPC communication
+│   │   │   │   ├── RPCService.swift             # Main RPC coordinator
+│   │   │   │   └── Modules/                     # Feature-specific RPC modules
+│   │   │   │       ├── CameraRPC.swift          # Camera operations
+│   │   │   │       ├── SecurityRPC.swift        # Security & encryption
+│   │   │   │       └── SystemRPC.swift          # System information
+│   │   │   └── Encryption/              # Hybrid RSA/AES encryption system
+│   │   ├── ViewModels/                  # MVVM presentation logic
+│   │   └── Views/                       # SwiftUI interface components
+│   ├── Settings/
+│   │   └── Views/                       # Settings UI (CameraSettingsView, etc.)
+│   └── Shared/
+│       └── Views/                       # Reusable UI components
+└── Assets.xcassets/                     # App icons and visual assets
 
-## Development Notes
-- Target platform: iOS
-- UI Framework: SwiftUI
-- Project format: Xcode project (`.xcodeproj`)
-- Architecture: Feature-based modular organization with MVVM pattern
-- **Dual Protocol Support**: Both HTTP CGI and RPC authentication/communication
-- Authentication system implemented with keychain storage
-- Settings dashboard with multiple configuration views
-- Three main targets: DahuaNVR (app), DahuaNVRTests (unit tests), DahuaNVRUITests (UI tests)
-
-## RPC Implementation Status
-Based on @RPC_plan.md, the following RPC components are **COMPLETED**:
-
-### ✅ Phase 1: Foundation Infrastructure
-- **RPCBase**: Core RPC communication with JSON-RPC protocol
-- **RPCLogin**: Two-stage authentication with MD5 digest and keep-alive
-- **RPCTypes**: Type-safe data structures for RPC communication
-- **Session Management**: HTTP cookie-based session handling
-
-### ✅ Phase 2: Core RPC Modules  
-- **ConfigManagerRPC**: Complete configuration management (get/set operations)
-- **SystemRPC**: System information, monitoring, and control operations
-- **MagicBox Integration**: Device-specific operations
-
-### ✅ Phase 3: Dual Protocol Service
-- **DualProtocolService**: Parallel HTTP CGI + RPC authentication
-- **Authentication Results**: Independent status tracking for both protocols
-- **Developer Interface**: Explicit protocol choice (no automatic fallback)
-- **NVRSystem Model**: Enhanced with dual authentication status
-
-### ✅ Phase 4: Testing & Integration
-- **RPCTests**: Comprehensive unit test suite for all RPC components
-- **Integration**: Seamless integration with existing authentication flow
-- **UI Updates**: Visual indicators for dual authentication status
-
-## Development Logging
-Both HTTP CGI and RPC services include comprehensive logging for development mode:
-
-### HTTP CGI Logging (CameraAPIService):
-- **HTTP Request/Response Details**: Full URL, headers, status codes, response bodies
-- **Authentication Flow**: Digest auth challenges, parsed parameters
-- **Data Parsing**: Response parsing steps, camera creation failures
-- **Network Errors**: URLError details, connection issues
-- **Context-Specific Errors**: Detailed error messages with operation context
-
-### RPC Logging (RPCBase & Modules):
-- **RPC Request/Response Details**: JSON-RPC method calls, parameters, responses
-- **Authentication Flow**: Two-stage login process, session establishment
-- **Session Management**: Cookie handling, keep-alive mechanisms
-- **Module Operations**: ConfigManager and System module interactions
-- **Error Handling**: RPC-specific error codes and messages
-
-### Viewing Logs:
-- **Xcode Console**: View real-time logs during development
-- **Device Console**: Use Console.app to view system logs
-- **Breakpoint Debugging**: Set breakpoints in error handlers for detailed inspection
-
-### Debug vs Release:
-- Detailed logging is only active in DEBUG builds (`#if DEBUG`)
-- Release builds will have minimal logging for performance
-- Use `logger.debug()`, `logger.error()`, and `logger.warning()` for different log levels
-
-## Developer Usage Guide
-
-### Using Dual Protocol Services:
-```swift
-// Access both protocols through DualProtocolService
-let dualService = DualProtocolService(credentials: credentials)
-
-// Authenticate both protocols
-let authResult = await dualService.authenticate()
-
-// Use HTTP CGI for legacy operations
-let cameras = await dualService.httpCGI.getCameras()
-
-// Use RPC for advanced operations  
-let systemInfo = await dualService.rpc.system.getDeviceInfo()
-let config = await dualService.rpc.configManager.getConfig("Encode", channel: 0)
+DahuaNVRTests/                           # Unit tests with Swift Testing
+DahuaNVRUITests/                         # UI automation tests
 ```
 
-### RPC Module Examples:
-```swift
-// System information via RPC
-let cpuUsage = await rpcService.system.getCPUUsage()
-let memoryInfo = await rpcService.system.getMemoryInfo()
+## Common Commands
 
-// Configuration management via RPC
-await rpcService.configManager.setConfig("VideoWidget", table: widgetConfig, channel: 0)
-let encodeConfig = await rpcService.configManager.getConfig("Encode", channel: 1)
+```bash
+# Development
+xcodebuild -quiet -project DahuaNVR.xcodeproj -scheme DahuaNVR -configuration Debug build
+xcodebuild -quiet -project DahuaNVR.xcodeproj -scheme DahuaNVR -configuration Release build
+
+# Testing
+xcodebuild test -quiet -project DahuaNVR.xcodeproj -scheme DahuaNVR -destination 'platform=iOS Simulator,name=iPhone 16'
+xcodebuild test -quiet -project DahuaNVR.xcodeproj -scheme DahuaNVR -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:DahuaNVRTests
 ```
 
-## Important Guidelines
-- Never update anything in @DahuaNVR.xcodeproj/project.pbxproj file
-- Always add -quiet flag when running test. Example: xcodebuild test -quiet -project DahuaNVR.xcodeproj -scheme DahuaNVR -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:DahuaNVRTests/RPCTests/RPCTests
-- Always add -quiet flag when running build. Example: xcodebuild -quiet -project DahuaNVR.xcodeproj -scheme DahuaNVR -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 16' build
+## Coding Standards
+
+### Architecture Patterns
+- **RPC-Only Communication**: All server interactions use JSON-RPC protocol via `RPCService`
+- **MVVM Pattern**: Views → ViewModels → Services → Models
+- **Dependency Management**: Services accessed through `AuthenticationManager.shared.rpcService`
+- **Async/Await**: Modern concurrency patterns throughout codebase
+- **Feature-Based Organization**: Code organized by business functionality, not technical layers
+
+### Code Quality Standards
+- **Swift Testing Framework**: Use `@Test` and `#expect()` (not XCTest)
+- **Error Handling**: Comprehensive error types with `LocalizedError` conformance
+- **Security**: Always use keychain for credential storage, never plaintext
+- **Logging**: Use `#if DEBUG` guards for development-only logging
+- **Memory Safety**: Proper `@MainActor` usage for UI updates
+
+### API Usage Patterns
+```swift
+// Correct RPC service access
+guard let rpcService = AuthenticationManager.shared.rpcService else { return }
+let cameras = try await rpcService.camera.getAllCameras()
+
+// Correct async UI updates
+await MainActor.run {
+    self.isLoading = false
+    self.cameras = fetchedCameras
+}
+```
+
+## Workflow Instructions
+
+### Development Process
+1. **Always read existing files** before making changes to understand current patterns
+2. **Run tests before commits**: Unit tests must pass before code integration
+3. **Security First**: Review all authentication and encryption code changes
+4. **UI Consistency**: Follow existing SwiftUI patterns and component structure
+5. **RPC Integration**: All server communication must use established RPC modules
+
+### Git Practices
+- **Never modify** `DahuaNVR.xcodeproj/project.pbxproj` directly
+- **Always use `-quiet` flag** in build/test commands for cleaner output
+- **Test on simulator** before device deployment
+
+## Custom Rules & Notes
+
+### Current Architecture Status (B+ Grade - 83/100)
+
+**✅ Production Ready Components:**
+- RPC-only architecture with comprehensive modules
+- Robust RSA/AES hybrid encryption system
+- Secure keychain credential management
+- Modern Swift async/await patterns
+- Comprehensive unit test coverage
+
+**⚠️ Known Technical Debt:**
+- Code duplication in camera fetching logic (CameraTabView vs CameraSettingsView)
+- Mixed model types (NVRCamera/CameraDevice) need consolidation
+- UI views tightly coupled to AuthenticationManager singleton
+- Incomplete implementations: SnapshotSettings, OverlaySettings, CameraName
+- Large view files need decomposition (CameraSettingsView: 750 lines)
+
+### Priority Improvements
+1. **Extract shared camera service** to eliminate duplication
+2. **Consolidate data models** for consistency
+3. **Implement dependency injection** for better testability
+4. **Complete placeholder features** for full functionality
+5. **Break down large view files** into focused components
+
+### Security Guidelines
+- **No critical vulnerabilities identified** in latest review
+- Keychain integration properly implemented
+- Session management and encryption practices are secure
+- Input validation and error boundaries in place
+- Follow established patterns for any new security features
+
+### Performance Notes
+- RPC service instances efficiently reused for same server connections
+- Proper async task cancellation handling needed in UI components
+- Loading states protected against concurrent requests

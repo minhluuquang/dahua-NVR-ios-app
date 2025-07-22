@@ -51,12 +51,15 @@ public struct EncryptedPacket: Codable {
     }
 }
 
-public enum EncryptionError: Error, LocalizedError {
+public enum EncryptionError: Error, LocalizedError, Equatable {
     case invalidPublicKey(String)
     case noCipherMatch(available: [String], serverCiphers: [String])
     case encryptionFailed(String)
     case invalidKeySize(expected: Int, actual: Int)
     case dataConversionFailed
+    case decryptionFailed(String)
+    case invalidBase64String
+    case invalidJSONData(String)
     
     public var errorDescription: String? {
         switch self {
@@ -70,6 +73,12 @@ public enum EncryptionError: Error, LocalizedError {
             return "Invalid key size. Expected: \(expected) bytes, Got: \(actual) bytes"
         case .dataConversionFailed:
             return "Failed to convert data during encryption process"
+        case .decryptionFailed(let detail):
+            return "Decryption failed: \(detail)"
+        case .invalidBase64String:
+            return "Invalid base64 encoded string"
+        case .invalidJSONData(let detail):
+            return "Failed to parse JSON data: \(detail)"
         }
     }
 }

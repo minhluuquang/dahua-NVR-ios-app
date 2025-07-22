@@ -22,7 +22,7 @@ class NVRManager: ObservableObject {
         
         if system.isDefault {
             updatedSystems = updatedSystems.map { 
-                NVRSystem(id: $0.id, name: $0.name, credentials: $0.credentials, isDefault: false, rpcAuthSuccess: $0.rpcAuthSuccess, httpCGIAuthSuccess: $0.httpCGIAuthSuccess)
+                NVRSystem(id: $0.id, name: $0.name, credentials: $0.credentials, isDefault: false, rpcAuthSuccess: $0.rpcAuthSuccess)
             }
         }
         
@@ -58,8 +58,7 @@ class NVRManager: ObservableObject {
                 name: nvr.name,
                 credentials: nvr.credentials,
                 isDefault: nvr.id == system.id,
-                rpcAuthSuccess: nvr.rpcAuthSuccess,
-                httpCGIAuthSuccess: nvr.httpCGIAuthSuccess
+                rpcAuthSuccess: nvr.rpcAuthSuccess
             )
         }
         
@@ -79,7 +78,7 @@ class NVRManager: ObservableObject {
         nvrSystems.first { $0.isDefault }
     }
     
-    func updateAuthenticationStatus(for systemId: UUID, rpcSuccess: Bool, httpCGISuccess: Bool) {
+    func updateAuthenticationStatus(for systemId: UUID, rpcSuccess: Bool) {
         if let index = nvrSystems.firstIndex(where: { $0.id == systemId }) {
             let system = nvrSystems[index]
             nvrSystems[index] = NVRSystem(
@@ -87,8 +86,7 @@ class NVRManager: ObservableObject {
                 name: system.name,
                 credentials: system.credentials,
                 isDefault: system.isDefault,
-                rpcAuthSuccess: rpcSuccess,
-                httpCGIAuthSuccess: httpCGISuccess
+                rpcAuthSuccess: rpcSuccess
             )
             
             if currentNVR?.id == systemId {
@@ -100,7 +98,7 @@ class NVRManager: ObservableObject {
     }
     
     func clearAuthenticationStatus(for systemId: UUID) {
-        updateAuthenticationStatus(for: systemId, rpcSuccess: false, httpCGISuccess: false)
+        updateAuthenticationStatus(for: systemId, rpcSuccess: false)
     }
     
     private func loadNVRSystems() {

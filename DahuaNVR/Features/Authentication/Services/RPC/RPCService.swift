@@ -21,6 +21,10 @@ class RPCService {
         SecurityRPC(base: rpcBase)
     }()
     
+    lazy var camera: CameraRPC = {
+        CameraRPC(rpcBase: rpcBase)
+    }()
+    
     init(baseURL: String) {
         self.rpcBase = RPCBase(baseURL: baseURL)
         self.rpcLogin = RPCLogin(rpcBase: rpcBase)
