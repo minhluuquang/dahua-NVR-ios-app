@@ -23,10 +23,8 @@ class ContentViewModel: ObservableObject {
     }
     
     private func initializeAuth() {
-        Task {
-            await authManager.attemptAutoLogin()
-            isInitializing = false
-        }
+        // Auto-login is now handled by AuthenticationManager initialization
+        isInitializing = false
     }
     
     func logout() async {

@@ -12,7 +12,7 @@ import os.log
 
 extension EncryptionUtility {
     
-    static func encryptWithRSA(data: Data, modulus: BigInt, exponent: BigInt) throws -> String {
+    static func encryptWithRSA(data: Data, modulus: BigUInt, exponent: BigUInt) throws -> String {
         logger.debug("Starting RSA encryption for \(data.count) bytes using PKCS#1 v1.5")
         
         // Convert BigInt modulus and exponent to byte arrays
@@ -28,21 +28,18 @@ extension EncryptionUtility {
         // Encrypt the data using PKCS#1 v1.5 padding (CryptoSwift default)
         let encryptedBytes = try rsa.encrypt(Array(data))
         
-        // Convert encrypted bytes to hex string
-        let hexString = encryptedBytes.map { String(format: "%02x", $0) }.joined()
-        
-        logger.debug("RSA encryption completed with PKCS#1 v1.5. Output: \(hexString.prefix(32))...")
-        
-        return hexString
+        let encryptedData = Data(encryptedBytes)
+        let encryptedBase64String = encryptedData.toHexString()
+        return encryptedBase64String
     }
     
-    private static func modulusToBytes(_ modulus: BigInt) -> [UInt8] {
+    private static func modulusToBytes(_ modulus: BigUInt) -> [UInt8] {
         // Convert BigInt to byte array
         let data = modulus.serialize()
         return Array(data)
     }
     
-    private static func exponentToBytes(_ exponent: BigInt) -> [UInt8] {
+    private static func exponentToBytes(_ exponent: BigUInt) -> [UInt8] {
         // Convert BigInt to byte array
         let data = exponent.serialize()
         return Array(data)

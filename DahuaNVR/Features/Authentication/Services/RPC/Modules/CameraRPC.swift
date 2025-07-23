@@ -19,8 +19,13 @@ class CameraRPC: RPCModule {
             throw RPCError(code: -1, message: "No active RPC session for camera request")
         }
         
-        let requestId = Int.random(in: 1000...9999)
-        let sessionId = "dummy_session"
+        guard let sessionId = rpcBase.currentSessionID else {
+            throw RPCError(code: -1, message: "No valid session ID available for camera request")
+        }
+        
+        #if DEBUG
+        logger.debug("   → Using session ID: \(sessionId)")
+        #endif
         
         struct CameraRequest: Codable {
             let method: String
@@ -32,15 +37,11 @@ class CameraRPC: RPCModule {
         let cameraRequest = CameraRequest(
             method: "LogicDeviceManager.getCameraAll",
             params: nil,
-            id: requestId,
+            id: 1,
             session: sessionId
         )
         
         let payload = [cameraRequest]
-        
-        #if DEBUG
-        logger.debug("   → Preparing encrypted payload with request ID: \(requestId)")
-        #endif
         
         let encryptedPacket = try EncryptionUtility.encrypt(
             payload: payload,

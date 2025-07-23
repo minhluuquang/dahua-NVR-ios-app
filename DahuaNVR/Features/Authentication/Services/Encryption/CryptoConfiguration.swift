@@ -21,8 +21,8 @@ public final class CryptoConfiguration {
     private var _cipher: [String] = []
     private var _publicKey: String?
     
-    private var _parsedModulus: BigInt?
-    private var _parsedExponent: BigInt?
+    private var _parsedModulus: BigUInt?
+    private var _parsedExponent: BigUInt?
     
     private init() {}
     
@@ -38,11 +38,11 @@ public final class CryptoConfiguration {
         queue.sync { _publicKey }
     }
     
-    public var parsedModulus: BigInt? {
+    public var parsedModulus: BigUInt? {
         queue.sync { _parsedModulus }
     }
     
-    public var parsedExponent: BigInt? {
+    public var parsedExponent: BigUInt? {
         queue.sync { _parsedExponent }
     }
     
@@ -88,8 +88,8 @@ public final class CryptoConfiguration {
         let modulusHex = String(modulusComponent.dropFirst(2))
         let exponentHex = String(exponentComponent.dropFirst(2))
         
-        guard let modulus = BigInt(modulusHex, radix: 16),
-              let exponent = BigInt(exponentHex, radix: 16) else {
+        guard let modulus = BigUInt(modulusHex, radix: 16),
+              let exponent = BigUInt(exponentHex, radix: 16) else {
             Self.logger.error("Failed to parse hex values from public key")
             return
         }

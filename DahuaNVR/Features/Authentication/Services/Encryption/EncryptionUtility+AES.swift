@@ -19,21 +19,23 @@ extension EncryptionUtility {
             throw EncryptionError.invalidKeySize(expected: profile.keyLength, actual: key.count)
         }
         
-        let paddedData = applyZeroPadding(to: data)
-        logger.debug("Padded data size: \(paddedData.count) bytes")
+//        let paddedData = applyZeroPadding(to: data)
+//        logger.debug("Padded data size: \(paddedData.count) bytes")
+        
+        logger.debug("Profile mode: \(profile.mode)")
         
         let encrypted: Data
         
         switch profile.mode {
         case "CBC":
-            let iv = Data(repeating: 0x00, count: 16)
-            let aes = try AES(key: Array(key), blockMode: CBC(iv: Array(iv)), padding: .noPadding)
-            let encryptedBytes = try aes.encrypt(Array(paddedData))
+            let iv = Array("0000000000000000".utf8)
+            let aes = try AES(key: Array(key), blockMode: CBC(iv: Array(iv)), padding: .zeroPadding)
+            let encryptedBytes = try aes.encrypt(Array(data))
             encrypted = Data(encryptedBytes)
             
         case "ECB":
-            let aes = try AES(key: Array(key), blockMode: ECB(), padding: .noPadding)
-            let encryptedBytes = try aes.encrypt(Array(paddedData))
+            let aes = try AES(key: Array(key), blockMode: ECB(), padding: .zeroPadding)
+            let encryptedBytes = try aes.encrypt(Array(data))
             encrypted = Data(encryptedBytes)
             
         default:
@@ -48,12 +50,13 @@ extension EncryptionUtility {
     
     private static func applyZeroPadding(to data: Data) -> Data {
         let blockSize = 16
-        let padding = (blockSize - (data.count % blockSize)) % blockSize
+        let remainder = data.count % blockSize
         
-        if padding == 0 {
+        if remainder == 0 {
             return data
         }
         
+        let padding = blockSize - remainder
         var paddedData = data
         paddedData.append(Data(repeating: 0x00, count: padding))
         return paddedData

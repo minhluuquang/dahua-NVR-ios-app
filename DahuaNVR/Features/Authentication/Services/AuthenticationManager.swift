@@ -26,10 +26,65 @@ final class AuthenticationManager: ObservableObject {
     let nvrManager = NVRManager()
     
     private init() {
-        loadPersistedAuth()
+        // Defer authentication to avoid race conditions
+        Task { @MainActor in
+            await initializeAuthentication()
+        }
+    }
+    
+    // Initialize authentication on app startup
+    private func initializeAuthentication() async {
+        // Check for persisted auth data
+        guard let persistedAuth = loadPersistedAuthData(),
+              !persistedAuth.isExpired else {
+            // No valid persisted auth, check for default NVR
+            if let defaultNVR = nvrManager.defaultNVR {
+                do {
+                    try await connectToNVR(defaultNVR)
+                } catch {
+                    #if DEBUG
+                    print("🔍 [AuthManager] Failed to auto-connect to default NVR: \(error)")
+                    #endif
+                    authenticationState = .idle
+                }
+            } else {
+                authenticationState = .idle
+            }
+            return
+        }
+        
+        // Try to authenticate with persisted credentials
+        do {
+            authenticationState = .loading
+            try await performAuthentication(with: persistedAuth.credentials)
+            authenticationState = .authenticated
+            
+            // Select default NVR if available
+            if let defaultNVR = nvrManager.defaultNVR {
+                nvrManager.selectNVR(defaultNVR)
+            }
+        } catch {
+            #if DEBUG
+            print("🔍 [AuthManager] Failed to authenticate with persisted credentials: \(error)")
+            #endif
+            await clearPersistedAuth()
+            authenticationState = .idle
+        }
     }
     
     func connectToNVR(_ nvrSystem: NVRSystem) async throws {
+        // Prevent duplicate authentication if already authenticated to the same server
+        if case .authenticated = authenticationState,
+           let current = currentCredentials,
+           current.serverURL == nvrSystem.credentials.serverURL,
+           current.username == nvrSystem.credentials.username {
+            #if DEBUG
+            print("🔍 [AuthManager] Already authenticated to this NVR, just selecting it")
+            #endif
+            nvrManager.selectNVR(nvrSystem)
+            return
+        }
+        
         authenticationState = .loading
         
         try await performAuthentication(with: nvrSystem.credentials)
@@ -77,18 +132,6 @@ final class AuthenticationManager: ObservableObject {
         }
     }
     
-    func attemptAutoConnectToDefaultNVR() async {
-        guard let defaultNVR = nvrManager.defaultNVR else {
-            return
-        }
-        
-        do {
-            try await connectToNVR(defaultNVR)
-        } catch {
-            print("Failed to auto-connect to default NVR: \(error)")
-        }
-    }
-    
     func logout() async {
         authenticationState = .idle
         await clearPersistedAuth()
@@ -96,18 +139,25 @@ final class AuthenticationManager: ObservableObject {
         rpcAuthService = nil
     }
     
-    func attemptAutoLogin() async {
-        guard let persistedAuth = loadPersistedAuthData(),
-              !persistedAuth.isExpired else {
-            await clearPersistedAuth()
-            return
-        }
-        
-        do {
-            try await performAuthentication(with: persistedAuth.credentials)
-            authenticationState = .authenticated
-        } catch {
-            await clearPersistedAuth()
+    func retryAuthentication() async {
+        // If we have current credentials, retry with them
+        if let credentials = currentCredentials {
+            do {
+                authenticationState = .loading
+                try await performAuthentication(with: credentials)
+                authenticationState = .authenticated
+            } catch {
+                authenticationState = .failed(error.localizedDescription)
+            }
+        } else if let defaultNVR = nvrManager.defaultNVR {
+            // Otherwise try with default NVR
+            do {
+                try await connectToNVR(defaultNVR)
+            } catch {
+                authenticationState = .failed(error.localizedDescription)
+            }
+        } else {
+            authenticationState = .idle
         }
     }
     
@@ -120,14 +170,6 @@ final class AuthenticationManager: ObservableObject {
         authenticationState = .authenticated
     }
     
-    private func loadPersistedAuth() {
-        if let persistedAuth = loadPersistedAuthData(),
-           !persistedAuth.isExpired {
-            Task {
-                await attemptAutoLogin()
-            }
-        }
-    }
     
     private func loadPersistedAuthData() -> PersistedAuthData? {
         do {

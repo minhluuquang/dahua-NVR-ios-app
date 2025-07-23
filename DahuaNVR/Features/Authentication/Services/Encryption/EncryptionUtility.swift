@@ -34,7 +34,19 @@ public final class EncryptionUtility {
         let rsaEncrypted = try encryptWithRSA(data: symmetricKey, modulus: modulus, exponent: exponent)
         
         let payloadData = try JSONEncoder().encode(payload)
+        
         let aesEncrypted = try encryptWithAES(data: payloadData, key: symmetricKey, profile: profile)
+        
+        #if DEBUG
+        if let payloadString = String(data: payloadData, encoding: .utf8) {
+            logger.debug("📦 Payload JSON: \(payloadString)")
+        }
+        if let symmetricKeyString = String(data: symmetricKey, encoding: .utf8) {
+            logger.debug("🔑 Symmetric Key: \(symmetricKeyString)")
+        }
+        
+        logger.debug("🔐 AES Encrypted Content: \(aesEncrypted)")
+        #endif
         
         let packet = EncryptedPacket(
             cipher: profile.cipherName,
@@ -58,16 +70,46 @@ public final class EncryptionUtility {
     }
     
     static func generateSymmetricKey(length: Int) throws -> Data {
-        var keyData = Data(count: length)
-        let result = keyData.withUnsafeMutableBytes { bytes in
-            SecRandomCopyBytes(kSecRandomDefault, length, bytes.baseAddress!)
-        }
+        let randomNumericString = generateRandomNumericString(length: length)
         
-        guard result == errSecSuccess else {
-            throw EncryptionError.encryptionFailed("Failed to generate random key")
+        guard let keyData = randomNumericString.data(using: .utf8) else {
+            throw EncryptionError.encryptionFailed("Failed to convert random numeric string to Data")
         }
         
         logger.debug("Generated symmetric key of \(length) bytes")
         return keyData
+    }
+    
+    private static func generateRandomNumericString(length: Int) -> String {
+        var resultString = ""
+        
+        // Base case: Handle requests for lengths of 16 or less
+        if length <= 16 {
+            // Generate a random float and convert it to string representation
+            let randomFloatString = String(Double.random(in: 0..<1))
+            
+            // Take the last 'length' characters from the string
+            let numericSlice = String(randomFloatString.suffix(length))
+            
+            // If the first character is "0", recursively call to try again
+            if numericSlice.first == "0" {
+                return generateRandomNumericString(length: length)
+            } else {
+                resultString = numericSlice
+            }
+        } else {
+            // Recursive step: Handle requests for lengths greater than 16
+            let chunksOf16 = length / 16
+            for _ in 0..<chunksOf16 {
+                resultString += generateRandomNumericString(length: 16)
+            }
+            
+            let remainder = length % 16
+            if remainder > 0 {
+                resultString += generateRandomNumericString(length: remainder)
+            }
+        }
+        
+        return resultString
     }
 }

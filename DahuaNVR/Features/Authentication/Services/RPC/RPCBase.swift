@@ -120,7 +120,7 @@ class RPCBase {
                 request = RPCRequest(method: method, params: params, session: sessionID, id: nextRequestID())
             } else {
                 // Regular API calls
-                request = RPCRequest(method: method, params: params, object: 0, session: sessionID)
+                request = RPCRequest(method: method, params: params, session: sessionID, id: nextRequestID())
             }
         }
         
@@ -236,7 +236,7 @@ class RPCBase {
                 request = RPCRequest(method: method, params: params, session: sessionID, id: nextRequestID())
             } else {
                 // Regular API calls
-                request = RPCRequest(method: method, params: params, object: 0, session: sessionID)
+                request = RPCRequest(method: method, params: params, session: sessionID, id: nextRequestID())
             }
         }
         
@@ -396,6 +396,10 @@ class RPCBase {
     
     var hasActiveSession: Bool {
         return sessionID != nil
+    }
+    
+    var currentSessionID: String? {
+        return sessionID
     }
     
     // Special method for OutsideCmd endpoint

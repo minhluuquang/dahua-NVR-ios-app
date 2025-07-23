@@ -60,7 +60,8 @@ class LoginViewModel: ObservableObject {
     }
     
     func attemptAutoLogin() async {
-        await authManager.attemptAutoLogin()
+        // Auto-login is now handled by AuthenticationManager initialization
+        // This method is no longer needed but kept for interface compatibility
     }
     
     func loadPersistedCredentials() {
