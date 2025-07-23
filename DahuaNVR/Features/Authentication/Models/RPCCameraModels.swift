@@ -131,7 +131,7 @@ extension RPCCameraInfo {
             oemVendor: ""
         )
         
-        return NVRCamera(
+        var camera = NVRCamera(
             controlID: "Channel\(self.uniqueChannel)",
             name: deviceInfo.name.isEmpty ? "Camera \(self.uniqueChannel + 1)" : deviceInfo.name,
             enable: enable,
@@ -139,7 +139,9 @@ extension RPCCameraInfo {
             type: self.type,
             videoStream: self.videoStream ?? "Main",
             uniqueChannel: self.uniqueChannel,
-            deviceInfo: nvrDeviceInfo
+            deviceInfo: nvrDeviceInfo,
+            showStatus: self.showStatus
         )
+        return camera
     }
 }

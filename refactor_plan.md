@@ -1,292 +1,82 @@
-# Comprehensive Refactoring Plan: CameraRPC Encrypted API Architecture
+# Camera Status Fix: Centralized State Management Solution
 
-## Executive Summary
+## Recommended Architecture
 
-This plan addresses critical architectural flaws in the CameraRPC module to support:
-
-- Single-use symmetric keys per API call
-- Multiple encrypted APIs with minimal code duplication
-- Parallel API requests without race conditions
+**CameraStore** (`ObservableObject`)
 
 ---
 
-## Plan Overview
+## Implementation Plan
 
-| PHASE 1: Foundation | PHASE 2: Abstraction | PHASE 3: Validation |
-|---------------------|----------------------|---------------------|
-| [Critical Fixes]    | [Extensible Design]  | [Production Ready]  |
-| Steps 3-4           | Steps 5-6            | Steps 7-8           |
+### Phase 1: Create CameraStore Foundation
 
----
+1. **Create `CameraStore.swift`**
+    - Implement as an `ObservableObject` class
+    - Add `@Published var cameras: [NVRCamera]`
+    - Add `@Published var isLoading: Bool` and `@Published var errorMessage: String?`
+    - Move camera fetching logic from views into the store
 
-## PHASE 1: Foundation – Fix Critical Core Issues
-
-### Step 3: Audit and Extend EncryptionUtility
-
-**Task 3A: Audit Current Usage**
-- Search codebase for all `EncryptionUtility.encrypt()` calls
-- Document current usage patterns
-- Identify breaking change risks
-
-**Task 3B: Add Backward-Compatible API**
-
-```swift
-// New method alongside existing one
-static func encryptWithKey(payload: Encodable, serverCiphers: [String]) throws -> (packet: EncryptedPacket, key: Data) {
-    // Same logic as encrypt() but return both packet and symmetric key
-}
-```
-
-**Success Criteria:**
-- Complete usage inventory documented
-- New API returns raw symmetric key
-- Existing code remains unaffected
+2. **Implement Core Methods**
+    - `fetchCameras()` — Centralized `getAllCameras` + `getCameraState` flow
+    - `updateCamera(cameraData:)` — Handles `secSetCamera` + refresh flow
+    - `refreshCameraStatus()` — Updates camera connection states
 
 ---
 
-### Step 4: Eliminate Stateful Key Storage in CameraRPC
+### Phase 2: Update View Architecture
 
-**Task 4A: Remove Instance Variable**
+1. **Modify `CameraTabView`**
+    - Replace `@State cameras` with `@StateObject var store = CameraStore()`
+    - Remove duplicate `fetchCamerasRPC()` method
+    - Use `store.cameras` for UI data
 
-```swift
-class CameraRPC: RPCModule {
-    let rpcBase: RPCBase
-    // REMOVE: private var lastUsedSymmetricKey: Data?
-}
-```
+2. **Update `CameraDetailsView`**
+    - Remove isolated `@State private var camera`
+    - Use `@EnvironmentObject var store: CameraStore`
+    - Find camera from store using ID/channel for current data
 
-**Task 4B: Implement Request-Scoped Keys**
-
-```swift
-func getAllCameras() async throws -> [NVRCamera] {
-    // Generate fresh key for this request only
-    let (packet, key) = try EncryptionUtility.encryptWithKey(...)
-
-    // Use key immediately for decryption
-    let decryptedData = try decryptCameraResponse(
-        encryptedContent: responseData.content,
-        key: key  // Request-scoped, never stored
-    )
-    // Key automatically deallocated when function exits
-}
-```
-
-**Success Criteria:**
-- No shared encryption state between API calls
-- Each request uses unique symmetric key
-- Thread-safe concurrent execution
+3. **Modify `CameraEditSheet`**
+    - Use `@EnvironmentObject var store: CameraStore`
+    - Call `store.updateCamera()` instead of direct RPC
+    - Remove local camera update logic
 
 ---
 
-## PHASE 2: Create Extensible Abstraction Layer
+### Phase 3: Data Flow Integration
 
-### Step 5: Design Generic Encrypted API Interface
+1. **`secSetCamera` Flow in Store**
+    ```
+    store.updateCamera()
+      ↓
+    rpcService.secSetCamera()
+      ↓
+    rpcService.getAllCameras() (with getCameraState)
+      ↓
+    update @Published cameras
+      ↓
+    all views automatically refresh
+    ```
 
-**Task 5A: Define Protocol**
-
-```swift
-protocol EncryptedRPCModule {
-    var rpcBase: RPCBase { get }
-}
-```
-
-**Task 5B: Implement Generic Handler**
-
-```swift
-extension EncryptedRPCModule {
-    func sendEncrypted<TRequest: Codable, TResponse: Codable>(
-        method: String,
-        payload: TRequest,
-        responseType: TResponse.Type
-    ) async throws -> TResponse
-}
-```
-
-```swift
-extension RPCBase {
-    func sendEncrypted<T: Codable>(
-        method: String,
-        payload: Codable,
-        responseType: T.Type
-    ) async throws -> T {
-        // 1. Generate fresh key for this request
-        let (packet, key) = try EncryptionUtility.encryptWithKey(...)
-
-        // 2. Send via system.multiSec endpoint
-        let response = try await send(method: "system.multiSec", ...)
-
-        // 3. Decrypt response with same key
-        let decrypted = try decryptResponse(response.content, key: key)
-
-        // 4. Key automatically deallocated
-        return try JSONDecoder().decode(T.self, from: decrypted)
-    }
-}
-```
-
-**Success Criteria:**
-- Single generic handler for all encrypted APIs
-- Automatic key lifecycle management
-- Type-safe request/response handling
+2. **Environment Injection**
+    - Inject `CameraStore` at app root level
+    - All camera views access the same store instance
 
 ---
 
-### Step 6: Refactor CameraRPC to Use Abstraction
+## Benefits Delivered
 
-**Task 6A: Adopt New Protocol**
-
-```swift
-class CameraRPC: RPCModule, EncryptedRPCModule {
-    let rpcBase: RPCBase
-
-    func getAllCameras() async throws -> [NVRCamera] {
-        let cameraRequest = CameraRequest(...)
-
-        // Simplified - no encryption logic needed
-        let response = try await sendEncrypted(
-            method: "LogicDeviceManager.getCameraAll",
-            payload: [cameraRequest],
-            responseType: [RPCCameraResponse].self
-        )
-
-        return response.map { $0.toNVRCamera() }
-    }
-}
-```
-
-**Task 6B: Clean Up Legacy Code**
-- Remove all manual encryption/decryption logic
-- Remove custom key padding/truncation methods
-- Simplify response parsing
-
-**Success Criteria:**
-- CameraRPC becomes stateless and focused
-- 80% reduction in encryption-related code
-- Maintainable and readable implementation
+- **Fixes Status Issue:** `CameraDetailsView` shows current status from centralized data
+- **Eliminates Code Duplication:** Single camera fetching implementation
+- **Future-Proof Architecture:** Ready for new camera features and views
+- **Consistent State:** All views always show the same camera data
+- **Maintainable Codebase:** Clear separation of data and UI concerns
 
 ---
 
-## PHASE 3: Enable Future APIs and Validation
+## Long-term Advantages
 
-### Step 7: Create Implementation Templates
-
-**Task 7A: Demonstrate Easy API Addition**
-
-```swift
-// Adding new encrypted APIs - only 2 lines needed!
-extension CameraRPC {
-    func updateCamera(_ camera: CameraUpdateRequest) async throws -> CameraUpdateResponse {
-        return try await sendEncrypted(
-            method: "LogicDeviceManager.updateCamera",
-            payload: camera,
-            responseType: CameraUpdateResponse.self
-        )
-    }
-
-    func addCamera(_ camera: CameraAddRequest) async throws -> CameraAddResponse {
-        return try await sendEncrypted(
-            method: "LogicDeviceManager.addCamera",
-            payload: camera,
-            responseType: CameraAddResponse.self
-        )
-    }
-}
-```
-
-**Task 7B: Documentation**
-
-### Adding New Encrypted APIs – Developer Guide
-
-#### Steps:
-1. Make RPC module conform to `EncryptedRPCModule`
-2. Use `sendEncrypted()` with payload and response types
-3. Done! Key management handled automatically
-
-#### Requirements:
-- Payload must be Codable
-- Response must be Codable
-- API uses system.multiSec endpoint
-
-**Success Criteria:**
-- New encrypted APIs require <5 lines of code
-- Clear documentation for developers
-- Proven pattern for future expansion
-
----
-
-### Step 8: Comprehensive Testing and Validation
-
-**Task 8A: Concurrent Testing**
-
-```swift
-func testParallelEncryptedCalls() async {
-    await withTaskGroup(of: [NVRCamera].self) { group in
-        for _ in 0..<10 {
-            group.addTask {
-                try! await camera.getAllCameras()
-            }
-        }
-        // Verify all calls succeed with unique keys
-    }
-}
-```
-
-**Task 8B: Integration Testing**
-- Full authentication flow validation
-- Backward compatibility verification
-- Error handling and edge cases
-
-**Task 8C: Final Requirements Validation**
-
-#### REQUIREMENT CHECKLIST:
-- [x] Single-use symmetric keys per API call
-- [x] Support for multiple encrypted APIs
-- [x] Parallel API request capability
-- [x] No security regressions
-- [x] Maintainable architecture
-- [x] Performance preservation
-
-**Success Criteria:**
-- All parallel tests pass
-- No functionality regressions
-- Production deployment ready
-
----
-
-## Implementation Dependencies
-
-```
-EncryptionUtility Changes (Step 3)
-            |
-            v
-CameraRPC State Removal (Step 4)
-            |
-            v
-Protocol Design (Step 5)
-            |
-            v
-CameraRPC Refactor (Step 6)
-            |
-            v
-Future API Templates (Step 7)
-            |
-            v
-Testing & Validation (Step 8)
-```
-
----
-
-## Risk Mitigation
-
-- **High Risk:** EncryptionUtility API changes  
-  _Mitigation:_ Backward-compatible extension method
-
-- **Medium Risk:** Protocol complexity  
-  _Mitigation:_ Start simple, iterate based on usage
-
-- **Low Risk:** Performance impact  
-  _Mitigation:_ Benchmark at each phase
-
----
-
-This plan transforms the current broken architecture into a robust, extensible system that meets all requirements while maintaining security and performance standards.
+- Easy to add camera search, filtering, grouping features
+- Simple to implement real-time status updates
+- Straightforward offline/caching capabilities
+- Reduced bugs from state synchronization issues
+- Clear testing boundaries for data vs UI logic

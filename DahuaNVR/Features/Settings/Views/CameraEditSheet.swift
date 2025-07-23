@@ -4,10 +4,22 @@ import os.log
 struct CameraEditSheet: View {
     @Binding var camera: NVRCamera
     @State private var editableCamera: EditableCameraData
+    @EnvironmentObject var store: CameraStore
     @Environment(\.dismiss) private var dismiss
     @State private var showingCancelAlert = false
+    @State private var availableChannels: [Int] = []
+    @State private var isLoadingChannels = false
+    @State private var isPasswordFieldFocused = false
+    @State private var temporaryPassword = ""
+    @State private var isSaving = false
+    @State private var saveError: String?
+    @FocusState private var focusedField: Field?
     
     private let logger = Logger(subsystem: "com.minhlq.DahuaNVR", category: "CameraEditSheet")
+    
+    enum Field: Hashable {
+        case password
+    }
     
     init(camera: Binding<NVRCamera>) {
         self._camera = camera
@@ -17,10 +29,12 @@ struct CameraEditSheet: View {
     var body: some View {
         NavigationView {
             Form {
-                deviceSection
+                channelSection
+                manufacturerSection
                 networkSection
-                protocolSection
-                authenticationsSection
+                authenticationSection
+                channelConfigSection
+                decodeStrategySection
             }
             .navigationTitle("Edit Camera")
             .navigationBarTitleDisplayMode(.inline)
@@ -36,10 +50,16 @@ struct CameraEditSheet: View {
                 }
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Save") {
-                        saveChanges()
+                    Button(action: saveChanges) {
+                        HStack {
+                            if isSaving {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                            }
+                            Text("Save")
+                        }
                     }
-                    .disabled(!isFormValid)
+                    .disabled(!isFormValid || isSaving)
                 }
             }
             .alert("Unsaved Changes", isPresented: $showingCancelAlert) {
@@ -50,44 +70,59 @@ struct CameraEditSheet: View {
             } message: {
                 Text("You have unsaved changes. Are you sure you want to discard them?")
             }
+            .alert("Save Error", isPresented: .constant(saveError != nil)) {
+                Button("OK") {
+                    saveError = nil
+                }
+            } message: {
+                Text(saveError ?? "An unknown error occurred")
+            }
+        }
+        .onAppear {
+            Task {
+                await loadAvailableChannels()
+            }
         }
     }
     
     // MARK: - Form Sections
     
-    private var deviceSection: some View {
-        Section("Device Information") {
-            HStack {
-                Text("Name")
-                Spacer()
-                TextField("Device Name", text: $editableCamera.name)
-                    .multilineTextAlignment(.trailing)
-                    .textFieldStyle(.plain)
+    private var channelSection: some View {
+        Section("Channel") {
+            if isLoadingChannels {
+                HStack {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("Loading available channels...")
+                        .foregroundColor(.secondary)
+                        .font(.caption)
+                }
+            } else if availableChannels.isEmpty {
+                Text("No available channels")
+                    .foregroundColor(.secondary)
+            } else {
+                Picker("Channel", selection: $editableCamera.uniqueChannel) {
+                    ForEach(availableChannels, id: \.self) { channel in
+                        Text("Channel \(channel)").tag(channel)
+                    }
+                }
             }
-            
-            HStack {
-                Text("Device ID")
-                Spacer()
-                TextField("Device ID", text: $editableCamera.deviceID)
-                    .multilineTextAlignment(.trailing)
-                    .textFieldStyle(.plain)
+        }
+    }
+    
+    private var manufacturerSection: some View {
+        Section("Manufacturer") {
+            Picker("Manufacturer", selection: $editableCamera.manufacturer) {
+                Text("Private").tag("Private")
+                Text("ONVIF").tag("ONVIF")
+                Text("Custom").tag("Custom")
             }
-            
-            HStack {
-                Text("Channel")
-                Spacer()
-                TextField("Channel", value: $editableCamera.uniqueChannel, format: .number)
-                    .multilineTextAlignment(.trailing)
-                    .textFieldStyle(.plain)
-                    .keyboardType(.numberPad)
-            }
-            
-            Toggle("Enable", isOn: $editableCamera.enable)
+            .pickerStyle(.segmented)
         }
     }
     
     private var networkSection: some View {
-        Section("Network Settings") {
+        Section("Network") {
             HStack {
                 Text("IP Address")
                 Spacer()
@@ -98,62 +133,17 @@ struct CameraEditSheet: View {
             }
             
             HStack {
-                Text("HTTP Port")
+                Text("TCP Port")
                 Spacer()
                 TextField("Port", value: $editableCamera.httpPort, format: .number)
                     .multilineTextAlignment(.trailing)
                     .textFieldStyle(.plain)
                     .keyboardType(.numberPad)
             }
-            
-            HStack {
-                Text("RTSP Port")
-                Spacer()
-                TextField("RTSP Port", value: $editableCamera.rtspPort, format: .number)
-                    .multilineTextAlignment(.trailing)
-                    .textFieldStyle(.plain)
-                    .keyboardType(.numberPad)
-            }
-            
-            HStack {
-                Text("MAC Address")
-                Spacer()
-                TextField("00:00:00:00:00:00", text: $editableCamera.macAddress)
-                    .multilineTextAlignment(.trailing)
-                    .textFieldStyle(.plain)
-            }
         }
     }
     
-    private var protocolSection: some View {
-        Section("Protocol Settings") {
-            HStack {
-                Text("Protocol Type")
-                Spacer()
-                TextField("Protocol", text: $editableCamera.protocolType)
-                    .multilineTextAlignment(.trailing)
-                    .textFieldStyle(.plain)
-            }
-            
-            HStack {
-                Text("Device Type")
-                Spacer()
-                TextField("Device Type", text: $editableCamera.deviceType)
-                    .multilineTextAlignment(.trailing)
-                    .textFieldStyle(.plain)
-            }
-            
-            HStack {
-                Text("Manufacturer")
-                Spacer()
-                TextField("Manufacturer", text: $editableCamera.manufacturer)
-                    .multilineTextAlignment(.trailing)
-                    .textFieldStyle(.plain)
-            }
-        }
-    }
-    
-    private var authenticationsSection: some View {
+    private var authenticationSection: some View {
         Section("Authentication") {
             HStack {
                 Text("Username")
@@ -168,10 +158,58 @@ struct CameraEditSheet: View {
             HStack {
                 Text("Password")
                 Spacer()
-                SecureField("Password", text: $editableCamera.password)
+                if focusedField == .password {
+                    SecureField("", text: $temporaryPassword)
+                        .multilineTextAlignment(.trailing)
+                        .textFieldStyle(.plain)
+                        .focused($focusedField, equals: .password)
+                        .onChange(of: temporaryPassword) { _, newValue in
+                            editableCamera.password = newValue
+                        }
+                } else {
+                    SecureField("", text: .constant("••••••••"))
+                        .multilineTextAlignment(.trailing)
+                        .textFieldStyle(.plain)
+                        .disabled(true)
+                        .onTapGesture {
+                            temporaryPassword = ""
+                            focusedField = .password
+                        }
+                }
+            }
+        }
+    }
+    
+    private var channelConfigSection: some View {
+        Section("Channel Configuration") {
+            HStack {
+                Text("Total Channels")
+                Spacer()
+                TextField("Channels", value: $editableCamera.totalChannels, format: .number)
                     .multilineTextAlignment(.trailing)
                     .textFieldStyle(.plain)
+                    .keyboardType(.numberPad)
             }
+            
+            HStack {
+                Text("Remote CH No.")
+                Spacer()
+                TextField("Remote Channel", value: $editableCamera.remoteChannelNo, format: .number)
+                    .multilineTextAlignment(.trailing)
+                    .textFieldStyle(.plain)
+                    .keyboardType(.numberPad)
+            }
+        }
+    }
+    
+    private var decodeStrategySection: some View {
+        Section("Decode Strategy") {
+            Picker("Decode Strategy", selection: $editableCamera.decodeStrategy) {
+                Text("General").tag("General")
+                Text("Realtime").tag("Realtime")
+                Text("Fluent").tag("Fluent")
+            }
+            .pickerStyle(.segmented)
         }
     }
     
@@ -179,20 +217,64 @@ struct CameraEditSheet: View {
     
     private var hasChanges: Bool {
         let original = EditableCameraData(from: camera)
-        return editableCamera != original
+        // Compare all fields except password
+        return original.controlID != editableCamera.controlID ||
+               original.name != editableCamera.name ||
+               original.enable != editableCamera.enable ||
+               original.deviceID != editableCamera.deviceID ||
+               original.uniqueChannel != editableCamera.uniqueChannel ||
+               original.ipAddress != editableCamera.ipAddress ||
+               original.httpPort != editableCamera.httpPort ||
+               original.rtspPort != editableCamera.rtspPort ||
+               original.username != editableCamera.username ||
+               original.protocolType != editableCamera.protocolType ||
+               original.deviceType != editableCamera.deviceType ||
+               original.macAddress != editableCamera.macAddress ||
+               original.manufacturer != editableCamera.manufacturer ||
+               original.totalChannels != editableCamera.totalChannels ||
+               original.remoteChannelNo != editableCamera.remoteChannelNo ||
+               original.decodeStrategy != editableCamera.decodeStrategy ||
+               !editableCamera.password.isEmpty // Only consider password changed if user entered something
     }
     
     private var isFormValid: Bool {
-        !editableCamera.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        !editableCamera.deviceID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         !editableCamera.ipAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         editableCamera.httpPort >= 0 &&
         editableCamera.httpPort <= 65535 &&
-        editableCamera.rtspPort >= 0 &&
-        editableCamera.rtspPort <= 65535
+        editableCamera.totalChannels > 0 &&
+        editableCamera.remoteChannelNo >= 0
     }
     
     // MARK: - Actions
+    
+    private func loadAvailableChannels() async {
+        await MainActor.run {
+            isLoadingChannels = true
+        }
+        
+        // Use cameras from the store if available, otherwise fetch them
+        let cameras: [NVRCamera]
+        if store.cameras.isEmpty {
+            await store.fetchCamerasRPC()
+            cameras = store.cameras
+        } else {
+            cameras = store.cameras
+        }
+        
+        let onlineChannels = cameras
+            .filter { $0.enable } // Only online cameras
+            .map { $0.uniqueChannel }
+            .sorted()
+        
+        await MainActor.run {
+            availableChannels = onlineChannels
+            // If current channel is not in available channels, select the first one
+            if !onlineChannels.contains(editableCamera.uniqueChannel) && !onlineChannels.isEmpty {
+                editableCamera.uniqueChannel = onlineChannels[0]
+            }
+            isLoadingChannels = false
+        }
+    }
     
     private func saveChanges() {
         Task {
@@ -202,52 +284,129 @@ struct CameraEditSheet: View {
     
     @MainActor
     private func saveChangesAsync() async {
+        // Set saving state
+        isSaving = true
+        saveError = nil
+        
         #if DEBUG
-        logger.debug("💾 Saving camera changes via RPC")
+        logger.debug("💾 Preparing camera changes for save")
         #endif
         
-        guard let rpcService = AuthenticationManager.shared.rpcService else {
-            #if DEBUG
-            logger.error("❌ No RPC service available for camera update")
-            #endif
-            return
-        }
-        
         do {
-            // Create the camera configuration
-            let cameraConfig = createCameraConfigDict()
-            
             #if DEBUG
-            logger.debug("📤 Sending camera config via RPC ConfigManager")
+            logger.debug("💾 [CameraEditSheet] Starting camera save process")
+            logger.debug("💾 [CameraEditSheet] Original camera: \(camera.name) (ID: \(camera.deviceID))")
+            logger.debug("💾 [CameraEditSheet] Changes detected: \(hasChanges)")
             #endif
             
-            // Update camera configuration using RPC ConfigManager
-            let success = try await rpcService.configManager.setConfig(
-                name: "LogicDeviceManager", 
-                table: cameraConfig, 
-                channel: editableCamera.uniqueChannel
-            )
+            // Create the merged camera data
+            let mergedCameraData = createMergedCameraData()
             
-            if success {
+            // Convert to JSON and print for debugging
+            let jsonData = try JSONSerialization.data(withJSONObject: mergedCameraData, options: .prettyPrinted)
+            if let jsonString = String(data: jsonData, encoding: .utf8) {
                 #if DEBUG
-                logger.debug("✅ Camera configuration updated successfully")
-                #endif
-                
-                // Update the binding (for UI consistency)
-                updateCameraBinding()
-                
-                // Dismiss the sheet
-                dismiss()
-            } else {
-                #if DEBUG
-                logger.error("❌ Failed to update camera configuration")
+                print("💾 [CameraEditSheet] MERGED CAMERA DATA:")
+                print(jsonString)
                 #endif
             }
+            
+            // Update camera through the store
+            #if DEBUG
+            logger.debug("💾 [CameraEditSheet] Calling store.updateCamera...")
+            #endif
+            
+            try await store.updateCamera(cameraData: mergedCameraData)
+            
+            #if DEBUG
+            logger.debug("💾 [CameraEditSheet] ✅ Store update successful, camera data refreshed")
+            #endif
+            
+            // Dismiss the sheet
+            dismiss()
+            
+            #if DEBUG
+            logger.debug("💾 [CameraEditSheet] Sheet dismissed successfully")
+            #endif
+            
         } catch {
             #if DEBUG
-            logger.error("❌ RPC camera update error: \(error.localizedDescription)")
+            logger.error("💾 [CameraEditSheet] ❌ Save failed with error: \(error)")
+            logger.error("💾 [CameraEditSheet] Error description: \(error.localizedDescription)")
+            let nsError = error as NSError
+            logger.error("💾 [CameraEditSheet] Error domain: \(nsError.domain)")
+            logger.error("💾 [CameraEditSheet] Error code: \(nsError.code)")
+            logger.error("💾 [CameraEditSheet] Error userInfo: \(nsError.userInfo)")
             #endif
+            
+            saveError = error.localizedDescription
         }
+        
+        // Reset saving state
+        isSaving = false
+    }
+    
+    private func createMergedCameraData() -> [String: Any] {
+        #if DEBUG
+        logger.debug("💾 [createMergedCameraData] Building camera data for secSetCamera")
+        logger.debug("💾 [createMergedCameraData] Original camera name: \(camera.name)")
+        logger.debug("💾 [createMergedCameraData] Edited camera name: \(editableCamera.name)")
+        logger.debug("💾 [createMergedCameraData] Edited IP: \(editableCamera.ipAddress)")
+        logger.debug("💾 [createMergedCameraData] Edited Username: \(editableCamera.username)")
+        logger.debug("💾 [createMergedCameraData] Edited HTTP Port: \(editableCamera.httpPort)")
+        logger.debug("💾 [createMergedCameraData] Edited Manufacturer: \(editableCamera.manufacturer)")
+        #endif
+        
+        // Create the merged camera object with all fields from the original camera
+        // but with edited values replacing the original ones
+        let mergedCamera: [String: Any] = [
+            "Channel": editableCamera.uniqueChannel,
+            "DeviceID": camera.deviceID,
+            "DeviceInfo": [
+                "Address": editableCamera.ipAddress,
+                "AudioInputChannels": camera.deviceInfo.audioInputChannels,
+                "DeviceClass": camera.deviceInfo.deviceClass,
+                "DeviceType": camera.deviceInfo.deviceType,
+                "Enable": camera.enable,
+                "Encryption": camera.deviceInfo.encryptStream,
+                "HttpPort": editableCamera.httpPort,
+                "HttpsPort": camera.deviceInfo.httpsPort,
+                "Mac": camera.deviceInfo.mac,
+                "Name": camera.deviceInfo.name,
+                "PoE": false, // Default value as not in our model
+                "PoEPort": 0, // Default value as not in our model
+                "Port": camera.deviceInfo.port,
+                "ProtocolType": editableCamera.manufacturer, // This is the edited protocol type
+                "RtspPort": camera.deviceInfo.rtspPort,
+                "SerialNo": "",
+                "UserName": editableCamera.username,
+                "VideoInputChannels": editableCamera.totalChannels,
+                "VideoInputs": [
+                    [
+                        "BufDelay": 160, // Default value
+                        "Enable": true,
+                        "ExtraStreamUrl": "",
+                        "MainStreamUrl": "",
+                        "Name": "",
+                        "ServiceType": "AUTO"
+                    ]
+                ],
+                "Password": editableCamera.password,
+                "LoginType": 0, // Default value
+                "b_isMultiVideoSensor": false // Default value
+            ],
+            "Enable": camera.enable,
+            "Type": camera.type,
+            "UniqueChannel": editableCamera.uniqueChannel,
+            "VideoStandard": "PAL", // Default value as not in our model
+            "VideoStream": camera.videoStream,
+            "showStatus": camera.showStatus ?? "Unknown"
+        ]
+        
+        // Return in the expected format with cameras array
+        return [
+            "cameras": [mergedCamera]
+        ]
     }
     
     private func createCameraConfigDict() -> [String: Any] {
@@ -262,12 +421,15 @@ struct CameraEditSheet: View {
                         "HttpPort": editableCamera.httpPort,
                         "RtspPort": editableCamera.rtspPort,
                         "UserName": editableCamera.username,
-                        "Password": editableCamera.password,
+                        "Password": editableCamera.password, // Empty string if user didn't change it
                         "ProtocolType": editableCamera.protocolType,
                         "DeviceType": editableCamera.deviceType,
                         "Name": editableCamera.name,
                         "Mac": editableCamera.macAddress,
-                        "VendorAbbr": editableCamera.manufacturer
+                        "VendorAbbr": editableCamera.manufacturer,
+                        "VideoInputChannels": editableCamera.totalChannels,
+                        "RemoteChannel": editableCamera.remoteChannelNo,
+                        "DecodeStrategy": editableCamera.decodeStrategy
                     ]
                 ]
             ]
@@ -385,6 +547,9 @@ struct EditableCameraData: Equatable {
     var deviceType: String
     var macAddress: String
     var manufacturer: String
+    var totalChannels: Int
+    var remoteChannelNo: Int
+    var decodeStrategy: String
     
     init(from camera: NVRCamera) {
         self.controlID = camera.controlID
@@ -396,11 +561,14 @@ struct EditableCameraData: Equatable {
         self.httpPort = camera.deviceInfo.httpPort
         self.rtspPort = camera.deviceInfo.rtspPort
         self.username = camera.deviceInfo.userName
-        self.password = camera.deviceInfo.password
+        self.password = "" // Always start with empty password since we can't retrieve it
         self.protocolType = camera.deviceInfo.protocolType
         self.deviceType = camera.deviceInfo.deviceType
         self.macAddress = camera.deviceInfo.mac
-        self.manufacturer = camera.deviceInfo.vendorAbbr
+        self.manufacturer = camera.deviceInfo.protocolType
+        self.totalChannels = camera.deviceInfo.videoInputChannels
+        self.remoteChannelNo = camera.deviceInfo.videoInputChannels
+        self.decodeStrategy = "General" // Default value
     }
     
     static func == (lhs: EditableCameraData, rhs: EditableCameraData) -> Bool {
@@ -417,7 +585,10 @@ struct EditableCameraData: Equatable {
                lhs.protocolType == rhs.protocolType &&
                lhs.deviceType == rhs.deviceType &&
                lhs.macAddress == rhs.macAddress &&
-               lhs.manufacturer == rhs.manufacturer
+               lhs.manufacturer == rhs.manufacturer &&
+               lhs.totalChannels == rhs.totalChannels &&
+               lhs.remoteChannelNo == rhs.remoteChannelNo &&
+               lhs.decodeStrategy == rhs.decodeStrategy
     }
 }
 

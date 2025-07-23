@@ -1,16 +1,27 @@
 import Foundation
-import os.log
 
-class CameraRPC: RPCModule, EncryptedRPCModule {
+class CameraRPC: RPCModule {
     let rpcBase: RPCBase
-    private let logger = Logger(subsystem: "com.minhlq.DahuaNVR", category: "CameraRPC")
     
     required init(rpcBase: RPCBase) {
         self.rpcBase = rpcBase
     }
     
-    func getAllCameras() async throws -> [NVRCamera] {
+    func getCameraState() async throws -> [CameraState] {
+        guard rpcBase.currentSessionID != nil else {
+            throw RPCError(code: -1, message: "No valid session ID available for camera state request")
+        }
         
+        let response = try await rpcBase.sendDirectResponse(
+            method: "LogicDeviceManager.getCameraState",
+            params: ["uniqueChannels": AnyJSON([-1])],
+            responseType: CameraStateResponse.self
+        )
+        
+        return response.params.states
+    }
+    
+    func getAllCameras() async throws -> [NVRCamera] {
         guard let sessionId = rpcBase.currentSessionID else {
             throw RPCError(code: -1, message: "No valid session ID available for camera request")
         }
@@ -29,51 +40,159 @@ class CameraRPC: RPCModule, EncryptedRPCModule {
             session: sessionId
         )
         
-        // Simplified - no encryption logic needed
-        let responses = try await sendEncrypted(
-            method: "LogicDeviceManager.getCameraAll",
+        // Get both cameras and their connection states concurrently
+        async let camerasTask = rpcBase.sendEncrypted(
+            method: "system.multiSec",
             payload: [cameraRequest],
-            responseType: [CameraResponse].self
+            handler: GetAllCamerasHandler()
         )
+        async let statesTask = getCameraState()
+        
+        let (responses, cameraStates) = try await (camerasTask, statesTask)
         
         guard let firstResponse = responses.first else {
             throw RPCError(code: -1, message: "No camera data received from RPC")
         }
         
-        let cameras = firstResponse.params.camera.compactMap { $0.toNVRCamera() }
+        // Create a dictionary for quick state lookup by channel
+        let statesByChannel = Dictionary(uniqueKeysWithValues: cameraStates.map { ($0.channel, $0.connectionState) })
         
+        let cameras = firstResponse.params.camera.compactMap { cameraInfo -> NVRCamera? in
+            var camera = cameraInfo.toNVRCamera()
+            // Map connection state to showStatus field
+            if let connectionState = statesByChannel[cameraInfo.uniqueChannel] {
+                camera?.showStatus = connectionState
+            }
+            return camera
+        }
         
         return cameras
     }
     
-    // MARK: - Future API Templates - Adding New Encrypted APIs
+    func secSetCamera(cameraData: [String: Any]) async throws -> [NVRCamera] {
+        guard let sessionId = rpcBase.currentSessionID else {
+            throw RPCError(code: -1, message: "No valid session ID available for camera update request")
+        }
+        
+        // Create the request structure with only camera data
+        let cameraRequest = try SecSetCameraRequest(cameraData: cameraData)
+        
+        let result = try await rpcBase.sendEncrypted(
+            method: "LogicDeviceManager.secSetCamera",
+            payload: cameraRequest,
+            handler: SecSetCameraHandler()
+        )
+        
+        if !result.success {
+            throw RPCError(code: -1, message: "Camera update failed")
+        }
+        
+        // Since the response doesn't contain camera data, we need to fetch updated cameras
+        // This ensures UI consistency after successful update
+        return try await getAllCameras()
+    }
+}
+
+// MARK: - Response Handlers
+
+private struct GetAllCamerasHandler: RPCResponseHandler {
+    typealias ResponseType = [CameraResponse]
     
-    // Template for camera update operations - only 2 lines needed!
-    func updateCamera(_ camera: CameraUpdateRequest) async throws -> CameraUpdateResponse {
-        return try await sendEncrypted(
-            method: "LogicDeviceManager.updateCamera",
-            payload: camera,
-            responseType: CameraUpdateResponse.self
+    func handle(rawData: Data, decryptionKey: Data?) throws -> [CameraResponse] {
+        // Parse the encrypted response wrapper
+        struct EncryptedResponse: Codable {
+            let result: Bool
+            let params: Params?
+            let error: RPCError?
+            let id: Int?
+            let session: String?
+            
+            struct Params: Codable {
+                let content: String
+            }
+        }
+        
+        let response = try JSONDecoder().decode(EncryptedResponse.self, from: rawData)
+        
+        if let error = response.error {
+            throw error
+        }
+        
+        guard response.result, let content = response.params?.content else {
+            throw RPCError(code: -1, message: "No encrypted content in camera response")
+        }
+        
+        guard let decryptionKey = decryptionKey else {
+            throw RPCError(code: -1, message: "No decryption key available")
+        }
+        
+        // Decrypt the content
+        let profile = EncryptionProfile.RPAC
+        let paddedKey: Data
+        if decryptionKey.count < profile.keyLength {
+            var keyData = decryptionKey
+            keyData.append(Data(repeating: 0, count: profile.keyLength - decryptionKey.count))
+            paddedKey = keyData.prefix(profile.keyLength)
+        } else {
+            paddedKey = decryptionKey.prefix(profile.keyLength)
+        }
+        
+        let decryptedData = try EncryptionUtility.decryptWithAES(
+            encryptedString: content,
+            key: paddedKey,
+            profile: profile
+        )
+        
+        // Parse the decrypted camera data
+        return try JSONDecoder().decode([CameraResponse].self, from: decryptedData)
+    }
+}
+
+private struct SecSetCameraHandler: RPCResponseHandler {
+    typealias ResponseType = SecSetCameraApiResult
+    
+    func handle(rawData: Data, decryptionKey: Data?) throws -> SecSetCameraApiResult {
+        // Parse response - NO DECRYPTION NEEDED for SecSetCamera
+        struct RawResponse: Codable {
+            let id: Int?
+            let result: Bool
+            let params: Params?
+            let error: ErrorInfo?
+            let session: String?
+            
+            struct Params: Codable {
+                let content: String
+            }
+            
+            struct ErrorInfo: Codable {
+                let code: Int
+                let message: String
+            }
+        }
+        
+        let response = try JSONDecoder().decode(RawResponse.self, from: rawData)
+        
+        // Check result field for success/failure
+        if !response.result {
+            if let error = response.error {
+                throw RPCError(code: error.code, message: error.message)
+            }
+            throw RPCError(code: -1, message: "SecSetCamera request failed")
+        }
+        
+        // Return success result
+        return SecSetCameraApiResult(
+            success: response.result,
+            content: response.params?.content,
+            session: response.session
         )
     }
-    
-    // Template for camera addition operations - only 2 lines needed!
-    func addCamera(_ camera: CameraAddRequest) async throws -> CameraAddResponse {
-        return try await sendEncrypted(
-            method: "LogicDeviceManager.addCamera",
-            payload: camera,
-            responseType: CameraAddResponse.self
-        )
-    }
-    
-    // Template for camera deletion operations - only 2 lines needed!
-    func deleteCamera(id: String) async throws -> CameraDeleteResponse {
-        return try await sendEncrypted(
-            method: "LogicDeviceManager.deleteCamera",
-            payload: ["id": id],
-            responseType: CameraDeleteResponse.self
-        )
-    }
+}
+
+struct SecSetCameraApiResult {
+    let success: Bool
+    let content: String?
+    let session: String?
 }
 
 struct CameraResponse: Codable {
@@ -82,6 +201,22 @@ struct CameraResponse: Codable {
 
 struct CameraParams: Codable {
     let camera: [RPCCameraInfo]
+}
+
+struct CameraStateResponse: Codable {
+    let id: Int
+    let params: CameraStateResponseParams
+    let result: Bool
+    let session: String
+}
+
+struct CameraStateResponseParams: Codable {
+    let states: [CameraState]
+}
+
+struct CameraState: Codable {
+    let channel: Int
+    let connectionState: String?
 }
 
 // MARK: - Template Request/Response Types
@@ -120,28 +255,83 @@ struct CameraDeleteResponse: Codable {
     let message: String?
 }
 
-private struct Logger {
-    let osLogger: os.Logger
+// MARK: - secSetCamera Request/Response Types
+
+// DTO structure to match EXACT server expected JSON format
+struct CameraUpdateDTO: Codable {
+    let Address: String
+    let AudioInputChannels: Int
+    let DeviceClass: String
+    let DeviceType: String
+    let Enable: Bool
+    let Encryption: Int
+    let HttpPort: Int
+    let HttpsPort: Int
+    let Mac: String
+    let Name: String
+    let PoE: Bool
+    let PoEPort: Int
+    let Port: Int
+    let ProtocolType: String
+    let RtspPort: Int
+    let SerialNo: String
+    let UserName: String
+    let VideoInputChannels: Int
+    let VideoInputs: [VideoInputDTO]
+    let Password: String
+    let LoginType: Int
+    let b_isMultiVideoSensor: Bool
+}
+
+struct VideoInputDTO: Codable {
+    let Enable: Bool
+    let ExtraStreamUrl: String
+    let MainStreamUrl: String
+    let Name: String
+    let ServiceType: String
+    let BufDelay: Int
+}
+
+struct SecSetCameraRequest: Codable {
+    let cameras: [CameraPayload]
     
-    init(subsystem: String, category: String) {
-        self.osLogger = os.Logger(subsystem: subsystem, category: category)
-    }
-    
-    func debug(_ message: String) {
-        #if DEBUG
-        osLogger.debug("\(message, privacy: .public)")
-        #endif
-    }
-    
-    func warning(_ message: String) {
-        #if DEBUG
-        osLogger.warning("\(message, privacy: .public)")
-        #endif
-    }
-    
-    func error(_ message: String) {
-        #if DEBUG
-        osLogger.error("\(message, privacy: .public)")
-        #endif
+    init(cameraData: [String: Any]) throws {
+        guard let camerasArray = cameraData["cameras"] as? [[String: Any]] else {
+            throw RPCError(code: -1, message: "Invalid camera data: missing 'cameras' array")
+        }
+        
+        // Use JSONDecoder to parse the dictionary array directly
+        let camerasData = try JSONSerialization.data(withJSONObject: camerasArray)
+        self.cameras = try JSONDecoder().decode([CameraPayload].self, from: camerasData)
     }
 }
+
+// Simplified payload structure that matches exact server JSON format
+struct CameraPayload: Codable {
+    let DeviceInfo: CameraUpdateDTO  // Use DTO directly - no conversion
+    let Channel: Int
+    let DeviceID: String
+    let VideoStream: String
+    let Enable: Bool
+    let `Type`: String
+    let showStatus: String
+    let VideoStandard: String
+    let UniqueChannel: Int
+    // Removed custom init - using compiler-generated Codable
+}
+
+// Response structure for secSetCamera - API returns array directly
+struct SecSetCameraRPCResponse: Codable {
+    let cameras: [SecSetCameraResult]
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self.cameras = try container.decode([SecSetCameraResult].self)
+    }
+}
+
+struct SecSetCameraResult: Codable {
+    let UniqueChannel: Int
+    let failedCode: Bool
+}
+

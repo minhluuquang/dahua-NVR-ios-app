@@ -61,7 +61,6 @@ private struct AnyCodable: Codable {
 
 class ConfigManagerRPC: RPCModule {
     let rpcBase: RPCBase
-    private let logger = Logger()
     
     required init(rpcBase: RPCBase) {
         self.rpcBase = rpcBase
@@ -74,13 +73,6 @@ class ConfigManagerRPC: RPCModule {
             params["channel"] = AnyJSON(channel)
         }
         
-        #if DEBUG
-        logger.debug("⚙️ RPC Config Get: \(name)")
-        if let channel = channel {
-            logger.debug("   → Channel: \(channel)")
-        }
-        #endif
-        
         let response: RPCResponse<AnyJSON> = try await rpcBase.send(
             method: "configManager.getConfig",
             params: params,
@@ -90,10 +82,6 @@ class ConfigManagerRPC: RPCModule {
         guard let result = response.result?.dictionary else {
             throw RPCError(code: -1, message: "No config data received for \(name)")
         }
-        
-        #if DEBUG
-        logger.debug("Retrieved config \(name): \(result.keys.joined(separator: ", "))")
-        #endif
         
         return result
     }
@@ -107,14 +95,6 @@ class ConfigManagerRPC: RPCModule {
         if let channel = channel {
             params["channel"] = AnyJSON(channel)
         }
-        
-        #if DEBUG
-        logger.debug("📝 RPC Config Set: \(name)")
-        if let channel = channel {
-            logger.debug("   → Channel: \(channel)")
-        }
-        logger.debug("   → Table keys: \(table.keys.joined(separator: ", "))")
-        #endif
         
         let response: RPCResponse<ConfigResult> = try await rpcBase.send(
             method: "configManager.setConfig",
@@ -130,10 +110,6 @@ class ConfigManagerRPC: RPCModule {
             let errorMessage = result.error ?? "Unknown error"
             throw RPCError(code: -1, message: "Failed to set config \(name): \(errorMessage)")
         }
-        
-        #if DEBUG
-        logger.debug("Successfully set config: \(name)")
-        #endif
         
         return result.result
     }
@@ -179,9 +155,6 @@ class ConfigManagerRPC: RPCModule {
     }
     
     func backupConfig() async throws -> String {
-        #if DEBUG
-        logger.debug("Creating configuration backup")
-        #endif
         
         let response: RPCResponse<AnyJSON> = try await rpcBase.send(
             method: "configManager.backup",
@@ -193,19 +166,11 @@ class ConfigManagerRPC: RPCModule {
             throw RPCError(code: -1, message: "Failed to create configuration backup")
         }
         
-        #if DEBUG
-        logger.debug("Configuration backup created successfully")
-        #endif
-        
         return backupData
     }
     
     func restoreConfig(backupData: String) async throws -> Bool {
         let params: [String: AnyJSON] = ["data": AnyJSON(backupData)]
-        
-        #if DEBUG
-        logger.debug("Restoring configuration from backup")
-        #endif
         
         let response: RPCResponse<ConfigResult> = try await rpcBase.send(
             method: "configManager.restore",
@@ -222,24 +187,7 @@ class ConfigManagerRPC: RPCModule {
             throw RPCError(code: -1, message: "Failed to restore config: \(errorMessage)")
         }
         
-        #if DEBUG
-        logger.debug("Configuration restored successfully")
-        #endif
-        
         return result.result
     }
 }
 
-private struct Logger {
-    func debug(_ message: String) {
-        #if DEBUG
-        print("[ConfigManagerRPC Debug] \(message)")
-        #endif
-    }
-    
-    func error(_ message: String) {
-        #if DEBUG
-        print("[ConfigManagerRPC Error] \(message)")
-        #endif
-    }
-}

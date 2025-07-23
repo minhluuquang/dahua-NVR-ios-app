@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import os.log
 
 enum SecurityError: Error {
     case missingEncryptionInfo
@@ -14,7 +13,6 @@ enum SecurityError: Error {
 
 public class SecurityRPC {
     private let base: RPCBase
-    private let logger = Logger(subsystem: "com.minhlq.DahuaNVR", category: "SecurityRPC")
     
     init(base: RPCBase) {
         self.base = base
@@ -33,10 +31,7 @@ public class SecurityRPC {
     }
     
     public func getEncryptInfo() async throws -> EncryptInfo {
-        logger.debug("Fetching encryption info from NVR")
-        
         // Use OutsideCmd endpoint for getEncryptInfo as shown in the curl example
-        logger.debug("Using OutsideCmd endpoint for Security.getEncryptInfo")
         
         // Use sendOutsideCmdDirect to decode the response directly as EncryptInfoResponse
         let response = try await base.sendOutsideCmdDirect(
@@ -48,13 +43,8 @@ public class SecurityRPC {
         // For getEncryptInfo, the result is typically a boolean true when successful
         // The actual data is in params
         guard let params = response.params else {
-            logger.error("Security.getEncryptInfo returned no params")
             throw SecurityError.missingEncryptionInfo
         }
-        
-        logger.debug("Successfully retrieved encryption info")
-        logger.debug("Asymmetric: \(params.asymmetric)")
-        logger.debug("Ciphers: \(params.cipher.joined(separator: ", "))")
         
         // Update global crypto configuration
         CryptoConfiguration.shared.update(

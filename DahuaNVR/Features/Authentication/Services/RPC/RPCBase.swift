@@ -96,27 +96,12 @@ struct RPCError: Codable, Error {
     let message: String
 }
 
-struct SystemMultiSecResponse: Codable {
-    let content: String
-    
-    private enum CodingKeys: String, CodingKey {
-        case content
-    }
-}
-
-struct SystemMultiSecRawResponse: Codable {
-    let result: Bool
-    let params: SystemMultiSecResponse?
-    let id: Int?
-    let session: String?
-}
 
 
 class RPCBase {
     private let baseURL: String
     private var sessionID: String?
     private var username: String?
-    private let logger = Logger()
     private var requestID: Int = 0
     private let urlSession: URLSession
     
@@ -179,34 +164,10 @@ class RPCBase {
                 return directResponse
                 
             } catch {
-                #if DEBUG
-                logger.error("Failed to decode direct RPC response: \(error.localizedDescription)")
-                if let responseString = String(data: data, encoding: .utf8) {
-                    logger.error("Raw response: \(responseString)")
-                }
-                #endif
                 throw RPCError(code: -1, message: "Invalid server response format: \(error.localizedDescription)")
             }
             
         } catch {
-            #if DEBUG
-            logger.error("❌ RPC Network Error: \(method)")
-            logger.error("   → Full URL: \(url.absoluteString)")
-            logger.error("   → Error: \(error.localizedDescription)")
-            logger.error("   → Error Type: \(type(of: error))")
-            
-            // Log the request that failed
-            if let requestData = urlRequest.httpBody,
-               let requestString = String(data: requestData, encoding: .utf8) {
-                logger.error("   → Failed Request Body: \(requestString)")
-            }
-            
-            // Check for specific network errors
-            if let urlError = error as? URLError {
-                logger.error("   → URLError Code: \(urlError.code.rawValue)")
-                logger.error("   → URLError Description: \(urlError.localizedDescription)")
-            }
-            #endif
             throw error
         }
     }
@@ -249,12 +210,6 @@ class RPCBase {
             do {
                 rpcResponse = try JSONDecoder().decode(RPCResponse<T>.self, from: data)
             } catch {
-                #if DEBUG
-                logger.error("Failed to decode RPC response: \(error.localizedDescription)")
-                if let responseString = String(data: data, encoding: .utf8) {
-                    logger.error("Raw response: \(responseString)")
-                }
-                #endif
                 throw RPCError(code: -1, message: "Invalid server response format: \(error.localizedDescription)")
             }
             
@@ -264,12 +219,6 @@ class RPCBase {
             }
             
             if let error = rpcResponse.error {
-                #if DEBUG
-                logger.error("❌ RPC Error: \(method)")
-                logger.error("   → Code: \(error.code)")
-                logger.error("   → Message: \(error.message)")
-                #endif
-                
                 // For login challenge errors (268632079 or 401), return the response for the first login
                 // so the caller can access the challenge params
                 if useLoginEndpoint && !includeSession && (error.code == 268632079 || error.code == 401) {
@@ -283,24 +232,6 @@ class RPCBase {
             
             return rpcResponse
         } catch {
-            #if DEBUG
-            logger.error("❌ RPC Network Error: \(method)")
-            logger.error("   → Full URL: \(url.absoluteString)")
-            logger.error("   → Error: \(error.localizedDescription)")
-            logger.error("   → Error Type: \(type(of: error))")
-            
-            // Log the request that failed
-            if let requestData = urlRequest.httpBody,
-               let requestString = String(data: requestData, encoding: .utf8) {
-                logger.error("   → Failed Request Body: \(requestString)")
-            }
-            
-            // Check for specific network errors
-            if let urlError = error as? URLError {
-                logger.error("   → URLError Code: \(urlError.code.rawValue)")
-                logger.error("   → URLError Description: \(urlError.localizedDescription)")
-            }
-            #endif
             throw error
         }
     }
@@ -333,19 +264,20 @@ class RPCBase {
         return sessionID
     }
     
-    func sendEncrypted<T: Codable>(
+    func sendEncrypted<Handler: RPCResponseHandler>(
         method: String,
         payload: Codable,
-        responseType: T.Type
-    ) async throws -> T {
+        handler: Handler
+    ) async throws -> Handler.ResponseType {
         
         guard hasActiveSession else {
             throw RPCError(code: -1, message: "No active RPC session for encrypted request")
         }
         
-        guard currentSessionID != nil else {
+        guard let sessionID = currentSessionID else {
             throw RPCError(code: -1, message: "No valid session ID available for encrypted request")
         }
+        
         
         // Generate fresh key for this request only
         let (encryptedPacket, symmetricKey) = try EncryptionUtility.encryptWithKey(
@@ -353,52 +285,35 @@ class RPCBase {
             serverCiphers: ["RPAC-256"]
         )
         
+        
         let params: [String: AnyJSON] = [
             "salt": AnyJSON(encryptedPacket.salt),
             "cipher": AnyJSON(encryptedPacket.cipher),
             "content": AnyJSON(encryptedPacket.content)
         ]
         
-        let response: SystemMultiSecRawResponse = try await sendDirectResponse(
-            method: "system.multiSec",
-            params: params,
-            responseType: SystemMultiSecRawResponse.self
-        )
+        // Send request and get raw response data
+        let request = RPCRequest(method: method, params: params, session: sessionID, id: nextRequestID())
         
-        guard let responseData = response.params else {
-            throw RPCError(code: -1, message: "No encrypted data received from RPC")
+        
+        let url = URL(string: "\(baseURL)/RPC2")!
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        do {
+            let requestData = try JSONEncoder().encode(request)
+            urlRequest.httpBody = requestData
+            
+            let (data, _) = try await urlSession.data(for: urlRequest)
+            
+            
+            // Let the handler process the response
+            return try handler.handle(rawData: data, decryptionKey: symmetricKey)
+            
+        } catch {
+            throw error
         }
-        
-        // Decrypt response with the same key
-        let decryptedData = try decryptResponse(
-            encryptedContent: responseData.content,
-            key: symmetricKey
-        )
-        
-        // Key automatically deallocated when function exits
-        return try JSONDecoder().decode(T.self, from: decryptedData)
-    }
-    
-    private func decryptResponse(encryptedContent: String, key: Data) throws -> Data {
-        let profile = EncryptionProfile.RPAC
-        
-        // Ensure key is proper length
-        let paddedKey: Data
-        if key.count < profile.keyLength {
-            var keyData = key
-            keyData.append(Data(repeating: 0, count: profile.keyLength - key.count))
-            paddedKey = keyData.prefix(profile.keyLength)
-        } else {
-            paddedKey = key.prefix(profile.keyLength)
-        }
-        
-        let decryptedData = try EncryptionUtility.decryptWithAES(
-            encryptedString: encryptedContent,
-            key: paddedKey,
-            profile: profile
-        )
-        
-        return decryptedData
     }
     
     // Special method for OutsideCmd endpoint
@@ -425,11 +340,6 @@ class RPCBase {
             return rpcResponse
             
         } catch {
-            #if DEBUG
-            logger.error("❌ OutsideCmd Network Error: \(method)")
-            logger.error("   → Full URL: \(url.absoluteString)")
-            logger.error("   → Error: \(error.localizedDescription)")
-            #endif
             throw error
         }
     }
@@ -458,26 +368,8 @@ class RPCBase {
             return directResponse
             
         } catch {
-            #if DEBUG
-            logger.error("❌ OutsideCmd Direct Network Error: \(method)")
-            logger.error("   → Full URL: \(url.absoluteString)")
-            logger.error("   → Error: \(error.localizedDescription)")
-            #endif
             throw error
         }
     }
 }
 
-private struct Logger {
-    func debug(_ message: String) {
-        #if DEBUG
-        print("[RPC Debug] \(message)")
-        #endif
-    }
-    
-    func error(_ message: String) {
-        #if DEBUG
-        print("[RPC Error] \(message)")
-        #endif
-    }
-}

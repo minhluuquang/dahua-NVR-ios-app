@@ -56,7 +56,7 @@ DahuaNVRUITests/                         # UI automation tests
 
 ```bash
 # Development
-xcodebuild -quiet -project DahuaNVR.xcodeproj -scheme DahuaNVR -configuration Debug build
+xcodebuild -quiet -project DahuaNVR.xcodeproj -scheme DahuaNVR -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 16' build
 xcodebuild -quiet -project DahuaNVR.xcodeproj -scheme DahuaNVR -configuration Release build
 
 # Testing

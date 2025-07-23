@@ -75,7 +75,6 @@ struct SecondLoginParams: Codable {
 
 class RPCLogin {
     private let rpcBase: RPCBase
-    private let logger = Logger()
     private var keepAliveTimer: Timer?
     private var keepAliveInterval: Int = 60
 
@@ -88,40 +87,19 @@ class RPCLogin {
     }
 
     func login(username: String, password: String) async throws {
-        #if DEBUG
-            logger.debug("🔐 Starting RPC Authentication")
-            logger.debug("   → Protocol: Dahua JSON-RPC challenge-response")
-            logger.debug("   → Username: \(username.isEmpty ? "empty" : username)")
-            logger.debug("   → Process: Two-stage authentication flow")
-        #endif
 
         try await rpcBase.setupSession()
 
         let authParams = try await firstLogin(username: username, password: password)
 
-        #if DEBUG
-            logger.debug("✅ Step 1 Complete: Challenge received")
-            logger.debug("   → Challenge random: \(authParams.random.prefix(8))...")
-            logger.debug("   → Challenge realm: \(authParams.realm)")
-            logger.debug("   → Encryption type: \(authParams.encryption)")
-            logger.debug("   → Next: Step 2 - Authenticated request with session")
-        #endif
 
         try await secondLogin(username: username, password: password, authParams: authParams)
 
-        #if DEBUG
-            logger.debug("🎉 RPC Authentication Complete")
-            logger.debug("   → Status: Session established successfully")
-            logger.debug("   → Keep-alive: Started (\(keepAliveInterval)s intervals)")
-        #endif
 
         startKeepAlive()
     }
 
     func logout() async throws {
-        #if DEBUG
-            logger.debug("Logging out from RPC session")
-        #endif
 
         stopKeepAlive()
 
@@ -131,13 +109,7 @@ class RPCLogin {
                 responseType: EmptyResponse.self,
                 useLoginEndpoint: false  // Use regular /RPC2 endpoint for logout (matches reference)
             )
-            #if DEBUG
-                logger.debug("RPC logout successful")
-            #endif
         } catch {
-            #if DEBUG
-                logger.error("RPC logout failed: \(error.localizedDescription)")
-            #endif
         }
 
         rpcBase.clearSession()
@@ -169,9 +141,6 @@ class RPCLogin {
         // Capture session ID from first login response if present
         if let sessionID = response.session {
             rpcBase.setSession(id: sessionID, username: username)
-            #if DEBUG
-                logger.debug("Session ID captured and set: \(sessionID)")
-            #endif
         } else {
             throw RPCError(code: -1, message: "Session ID missing from first login response")
         }
@@ -194,11 +163,6 @@ class RPCLogin {
                 code: -1, message: "Invalid auth parameters format: \(error.localizedDescription)")
         }
 
-        #if DEBUG
-            logger.debug("✅ Step 1: Challenge received as expected")
-            logger.debug("   → Session ID: \(response.session ?? "missing")")
-            logger.debug("   → Challenge params: random=\(authParams.random), realm=\(authParams.realm), encryption=\(authParams.encryption)")
-        #endif
 
         return authParams
     }
@@ -254,20 +218,9 @@ class RPCLogin {
 
             // Process successful login result
             keepAliveInterval = response.params.keepAliveInterval
-            #if DEBUG
-                logger.debug("Keep alive interval set to: \(keepAliveInterval) seconds")
-            #endif
 
-            #if DEBUG
-                logger.debug("✅ Step 2: Authentication successful")
-                logger.debug("   → Session validated and active")
-            #endif
 
         } catch let rpcError as RPCError {
-            #if DEBUG
-                logger.error("❌ Step 2 failed: \(rpcError.message)")
-                logger.error("   → Authentication with calculated response rejected")
-            #endif
             throw RPCError(
                 code: rpcError.code,
                 message: "Authentication failed: \(rpcError.message)")
@@ -289,21 +242,11 @@ class RPCLogin {
             let realmHash = md5Hash("\(username):\(authParams.realm):\(password)")
             let finalHash = md5Hash("\(username):\(authParams.random):\(realmHash)")
 
-            #if DEBUG
-                logger.debug("🔐 Calculating authentication response (Default encryption)")
-                logger.debug("   → Step 1: MD5(\(username):\(authParams.realm):password) = \(realmHash)")
-                logger.debug("   → Step 2: MD5(\(username):\(authParams.random):\(realmHash)) = \(finalHash)")
-                logger.debug("   → Algorithm: MD5(username:random:MD5(username:realm:password))")
-            #endif
 
             return finalHash
 
         default:
             // Unknown encryption type, return password as-is
-            #if DEBUG
-                logger.debug(
-                    "Unknown encryption type: \(authParams.encryption), using password as-is")
-            #endif
             return password
         }
     }
@@ -325,18 +268,12 @@ class RPCLogin {
             }
         }
 
-        #if DEBUG
-            logger.debug("Started keep alive timer with interval: \(keepAliveInterval) seconds")
-        #endif
     }
 
     private func stopKeepAlive() {
         keepAliveTimer?.invalidate()
         keepAliveTimer = nil
 
-        #if DEBUG
-            logger.debug("Stopped keep alive timer")
-        #endif
     }
 
     private func sendKeepAlive() async {
@@ -351,13 +288,7 @@ class RPCLogin {
                 params: params,
                 responseType: [String: Int].self
             )
-            #if DEBUG
-                logger.debug("Keep alive sent successfully")
-            #endif
         } catch {
-            #if DEBUG
-                logger.error("Keep alive failed: \(error.localizedDescription)")
-            #endif
         }
     }
 
@@ -366,16 +297,3 @@ class RPCLogin {
     }
 }
 
-private struct Logger {
-    func debug(_ message: String) {
-        #if DEBUG
-            print("[RPCLogin Debug] \(message)")
-        #endif
-    }
-
-    func error(_ message: String) {
-        #if DEBUG
-            print("[RPCLogin Error] \(message)")
-        #endif
-    }
-}

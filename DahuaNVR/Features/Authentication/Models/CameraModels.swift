@@ -10,6 +10,7 @@ struct NVRCamera: Codable, Identifiable {
     let videoStream: String
     let uniqueChannel: Int
     let deviceInfo: DeviceInfo
+    var showStatus: String?
 
     enum CodingKeys: String, CodingKey {
         case controlID = "ControlID"
@@ -20,6 +21,7 @@ struct NVRCamera: Codable, Identifiable {
         case videoStream = "VideoStream"
         case uniqueChannel = "UniqueChannel"
         case deviceInfo = "DeviceInfo"
+        case showStatus = "showStatus"
     }
 }
 

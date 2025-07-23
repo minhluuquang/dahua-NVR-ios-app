@@ -2,12 +2,15 @@ import SwiftUI
 
 struct MainAppView: View {
     @ObservedObject private var authManager = AuthenticationManager.shared
+    @StateObject private var cameraStore = CameraStore()
     @State private var showingNVRList = false
+    @State private var isProcessing = false
     
     var body: some View {
         NavigationView {
             TabView {
                 CameraTabView()
+                    .environmentObject(cameraStore)
                     .tabItem {
                         Image(systemName: "camera")
                         Text("Camera")
@@ -41,11 +44,28 @@ struct MainAppView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        showingNVRList = true
-                    }) {
-                        Image(systemName: "list.bullet")
+                    Menu {
+                        Button("NVR List", systemImage: "list.bullet") {
+                            showingNVRList = true
+                        }
+                        
+                        Button("Scramble IPs", systemImage: "shuffle") {
+                            Task {
+                                await scrambleCameraIPs()
+                            }
+                        }
+                        .disabled(isProcessing)
+                        
+                        Button("Reset IPs", systemImage: "arrow.clockwise") {
+                            Task {
+                                await resetCameraIPs()
+                            }
+                        }
+                        .disabled(isProcessing)
+                    } label: {
+                        Image(systemName: "ellipsis")
                     }
+                    .disabled(isProcessing)
                 }
             }
             .sheet(isPresented: $showingNVRList) {
@@ -68,6 +88,186 @@ struct MainAppView: View {
         #endif
         
         return currentNVR?.name ?? "No NVR Selected"
+    }
+    
+    @MainActor
+    private func scrambleCameraIPs() async {
+        guard let rpcService = authManager.rpcService else {
+            print("❌ [MainAppView] No RPC service available")
+            return
+        }
+        
+        isProcessing = true
+        
+        do {
+            // Get all cameras from the camera store (already fetched data)
+            let allCameras = cameraStore.cameras
+            
+            // Filter for online cameras only
+            let onlineCameras = allCameras.filter { camera in
+                camera.enable && camera.showStatus == "Connected"
+            }
+            
+            guard !onlineCameras.isEmpty else {
+                print("ℹ️ [MainAppView] No online cameras found to scramble")
+                isProcessing = false
+                return
+            }
+            
+            // Create camera payload with scrambled IP addresses
+            let cameraPayloads = onlineCameras.compactMap { camera -> [String: Any]? in
+                let scrambledIP = camera.deviceInfo.address + "1"
+                
+                return [
+                    "Channel": camera.uniqueChannel,
+                    "DeviceID": camera.deviceID,
+                    "DeviceInfo": [
+                        "Address": scrambledIP,
+                        "AudioInputChannels": camera.deviceInfo.audioInputChannels,
+                        "DeviceClass": camera.deviceInfo.deviceClass,
+                        "DeviceType": camera.deviceInfo.deviceType,
+                        "Enable": camera.deviceInfo.enable,
+                        "Encryption": camera.deviceInfo.encryptStream,
+                        "HttpPort": camera.deviceInfo.httpPort,
+                        "HttpsPort": camera.deviceInfo.httpsPort,
+                        "Mac": camera.deviceInfo.mac,
+                        "Name": camera.deviceInfo.name,
+                        "PoE": false,
+                        "PoEPort": 0,
+                        "Port": camera.deviceInfo.port,
+                        "ProtocolType": camera.deviceInfo.protocolType,
+                        "RtspPort": camera.deviceInfo.rtspPort,
+                        "SerialNo": camera.deviceInfo.serialNo,
+                        "UserName": camera.deviceInfo.userName,
+                        "VideoInputChannels": camera.deviceInfo.videoInputChannels,
+                        "VideoInputs": [
+                            [
+                                "BufDelay": 160,
+                                "Enable": true,
+                                "ExtraStreamUrl": "",
+                                "MainStreamUrl": "",
+                                "Name": "",
+                                "ServiceType": "AUTO"
+                            ]
+                        ],
+                        "Password": "",
+                        "LoginType": 0,
+                        "b_isMultiVideoSensor": false
+                    ],
+                    "Enable": camera.enable,
+                    "Type": camera.type,
+                    "UniqueChannel": camera.uniqueChannel,
+                    "VideoStandard": "PAL",
+                    "VideoStream": camera.videoStream,
+                    "showStatus": camera.showStatus ?? "Unknown"
+                ]
+            }
+            
+            let cameraData = ["cameras": cameraPayloads]
+            
+            // Call secSetCamera with all modified cameras
+            _ = try await rpcService.camera.secSetCamera(cameraData: cameraData)
+            
+            // Refresh camera data to reflect changes
+            await cameraStore.fetchCamerasRPC()
+            
+            print("✅ [MainAppView] Successfully scrambled \(cameraPayloads.count) camera IP addresses")
+            
+        } catch {
+            print("❌ [MainAppView] Failed to scramble camera IPs: \(error)")
+        }
+        
+        isProcessing = false
+    }
+    
+    @MainActor
+    private func resetCameraIPs() async {
+        guard let rpcService = authManager.rpcService else {
+            print("❌ [MainAppView] No RPC service available")
+            return
+        }
+        
+        isProcessing = true
+        
+        do {
+            // Get all cameras from the camera store (already fetched data)
+            let allCameras = cameraStore.cameras
+            
+            // Filter for cameras with scrambled IPs (those ending with extra characters)
+            let scrambledCameras = allCameras.filter { camera in
+                camera.enable && camera.deviceInfo.address.count > 11 // Standard IP is typically shorter
+            }
+            
+            guard !scrambledCameras.isEmpty else {
+                print("ℹ️ [MainAppView] No scrambled cameras found to reset")
+                isProcessing = false
+                return
+            }
+            
+            // Create camera payload with reset IP addresses
+            let cameraPayloads = scrambledCameras.compactMap { camera -> [String: Any]? in
+                let resetIP = String(camera.deviceInfo.address.dropLast())
+                
+                return [
+                    "Channel": camera.uniqueChannel,
+                    "DeviceID": camera.deviceID,
+                    "DeviceInfo": [
+                        "Address": resetIP,
+                        "AudioInputChannels": camera.deviceInfo.audioInputChannels,
+                        "DeviceClass": camera.deviceInfo.deviceClass,
+                        "DeviceType": camera.deviceInfo.deviceType,
+                        "Enable": camera.deviceInfo.enable,
+                        "Encryption": camera.deviceInfo.encryptStream,
+                        "HttpPort": camera.deviceInfo.httpPort,
+                        "HttpsPort": camera.deviceInfo.httpsPort,
+                        "Mac": camera.deviceInfo.mac,
+                        "Name": camera.deviceInfo.name,
+                        "PoE": false,
+                        "PoEPort": 0,
+                        "Port": camera.deviceInfo.port,
+                        "ProtocolType": camera.deviceInfo.protocolType,
+                        "RtspPort": camera.deviceInfo.rtspPort,
+                        "SerialNo": camera.deviceInfo.serialNo,
+                        "UserName": camera.deviceInfo.userName,
+                        "VideoInputChannels": camera.deviceInfo.videoInputChannels,
+                        "VideoInputs": [
+                            [
+                                "BufDelay": 160,
+                                "Enable": true,
+                                "ExtraStreamUrl": "",
+                                "MainStreamUrl": "",
+                                "Name": "",
+                                "ServiceType": "AUTO"
+                            ]
+                        ],
+                        "Password": "",
+                        "LoginType": 0,
+                        "b_isMultiVideoSensor": false
+                    ],
+                    "Enable": camera.enable,
+                    "Type": camera.type,
+                    "UniqueChannel": camera.uniqueChannel,
+                    "VideoStandard": "PAL",
+                    "VideoStream": camera.videoStream,
+                    "showStatus": camera.showStatus ?? "Unknown"
+                ]
+            }
+            
+            let cameraData = ["cameras": cameraPayloads]
+            
+            // Call secSetCamera with all reset cameras
+            _ = try await rpcService.camera.secSetCamera(cameraData: cameraData)
+            
+            // Refresh camera data to reflect changes
+            await cameraStore.fetchCamerasRPC()
+            
+            print("✅ [MainAppView] Successfully reset \(cameraPayloads.count) camera IP addresses")
+            
+        } catch {
+            print("❌ [MainAppView] Failed to reset camera IPs: \(error)")
+        }
+        
+        isProcessing = false
     }
 }
 
