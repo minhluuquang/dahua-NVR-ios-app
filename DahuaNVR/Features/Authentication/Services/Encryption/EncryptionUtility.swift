@@ -42,17 +42,6 @@ public final class EncryptionUtility {
         
         let aesEncrypted = try encryptWithAES(data: payloadData, key: symmetricKey, profile: profile)
         
-        #if DEBUG
-        if let payloadString = String(data: payloadData, encoding: .utf8) {
-            logger.debug("📦 Payload JSON: \(payloadString)")
-        }
-        if let symmetricKeyString = String(data: symmetricKey, encoding: .utf8) {
-            logger.debug("🔑 Symmetric Key: \(symmetricKeyString)")
-        }
-        
-        logger.debug("🔐 AES Encrypted Content: \(aesEncrypted)")
-        #endif
-        
         let packet = EncryptedPacket(
             cipher: profile.cipherName,
             salt: rsaEncrypted,

@@ -173,7 +173,7 @@ struct CameraRowView: View {
                     .font(.caption)
                     .foregroundColor(camera.enable ? .green : .red)
 
-                Text(camera.deviceInfo.deviceType)
+                Text(camera.deviceInfo.deviceType.isEmpty ? "Unknown Device" : camera.deviceInfo.deviceType)
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }
@@ -206,10 +206,10 @@ struct CameraInfoView: View {
                     DetailRow(label: "HTTP Port", value: "\(camera.deviceInfo.httpPort)")
                     DetailRow(label: "RTSP Port", value: "\(camera.deviceInfo.rtspPort)")
                     DetailRow(label: "Protocol", value: camera.deviceInfo.protocolType)
-                    DetailRow(label: "Device Type", value: camera.deviceInfo.deviceType)
-                    DetailRow(label: "Serial Number", value: camera.deviceInfo.serialNo)
-                    DetailRow(label: "MAC Address", value: camera.deviceInfo.mac)
-                    DetailRow(label: "Software Version", value: camera.deviceInfo.softwareVersion)
+                    DetailRow(label: "Device Type", value: camera.deviceInfo.deviceType.isEmpty ? "Unknown" : camera.deviceInfo.deviceType)
+                    DetailRow(label: "Serial Number", value: camera.deviceInfo.serialNo.isEmpty ? "N/A" : camera.deviceInfo.serialNo)
+                    DetailRow(label: "MAC Address", value: camera.deviceInfo.mac.isEmpty ? "N/A" : camera.deviceInfo.mac)
+                    DetailRow(label: "Software Version", value: camera.deviceInfo.softwareVersion.isEmpty ? "N/A" : camera.deviceInfo.softwareVersion)
                 }
             }
             .navigationTitle("Camera Details")

@@ -10,9 +10,6 @@ class CameraRPC: RPCModule, EncryptedRPCModule {
     }
     
     func getAllCameras() async throws -> [NVRCamera] {
-        #if DEBUG
-        logger.debug("🎥 RPC Camera: Getting all cameras via encrypted RPC")
-        #endif
         
         guard let sessionId = rpcBase.currentSessionID else {
             throw RPCError(code: -1, message: "No valid session ID available for camera request")
@@ -43,11 +40,8 @@ class CameraRPC: RPCModule, EncryptedRPCModule {
             throw RPCError(code: -1, message: "No camera data received from RPC")
         }
         
-        let cameras = firstResponse.params.camera.map { $0.toNVRCamera() }
+        let cameras = firstResponse.params.camera.compactMap { $0.toNVRCamera() }
         
-        #if DEBUG
-        logger.debug("✅ Successfully retrieved \(cameras.count) cameras via RPC")
-        #endif
         
         return cameras
     }

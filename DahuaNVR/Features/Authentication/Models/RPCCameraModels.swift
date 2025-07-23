@@ -9,10 +9,10 @@ struct RPCCameraResponse: Codable {
 }
 
 struct RPCCameraInfo: Codable {
-    let channel: Int
-    let deviceID: String
-    let deviceInfo: RPCDeviceInfo
-    let enable: Bool
+    let channel: Int?
+    let deviceID: String?
+    let deviceInfo: RPCDeviceInfo?
+    let enable: Bool?
     let type: String
     let uniqueChannel: Int
     let videoStandard: String?
@@ -34,24 +34,24 @@ struct RPCCameraInfo: Codable {
 
 struct RPCDeviceInfo: Codable {
     let address: String
-    let audioInputChannels: Int?
-    let deviceClass: String?
-    let deviceType: String?
+    let audioInputChannels: Int
+    let deviceClass: String
+    let deviceType: String
     let enable: Bool
-    let encryption: Int?
+    let encryption: Int
     let httpPort: Int
     let httpsPort: Int
-    let mac: String?
-    let name: String?
-    let poe: Bool?
-    let poePort: Int?
+    let mac: String
+    let name: String
+    let poe: Bool
+    let poePort: Int
     let port: Int
-    let protocolType: String?
-    let rtspPort: Int?
-    let serialNo: String?
-    let userName: String?
-    let videoInputChannels: Int?
-    let videoInputs: [RPCVideoInput]?
+    let protocolType: String
+    let rtspPort: Int
+    let serialNo: String
+    let userName: String
+    let videoInputChannels: Int
+    let videoInputs: [RPCVideoInput]
     
     private enum CodingKeys: String, CodingKey {
         case address = "Address"
@@ -77,12 +77,12 @@ struct RPCDeviceInfo: Codable {
 }
 
 struct RPCVideoInput: Codable {
-    let bufDelay: Int?
+    let bufDelay: Int
     let enable: Bool
-    let extraStreamUrl: String?
-    let mainStreamUrl: String?
-    let name: String?
-    let serviceType: String?
+    let extraStreamUrl: String
+    let mainStreamUrl: String
+    let name: String
+    let serviceType: String
     
     private enum CodingKeys: String, CodingKey {
         case bufDelay = "BufDelay"
@@ -95,44 +95,51 @@ struct RPCVideoInput: Codable {
 }
 
 extension RPCCameraInfo {
-    func toNVRCamera() -> NVRCamera {
-        let deviceInfo = DeviceInfo(
-            enable: self.deviceInfo.enable,
-            encryptStream: self.deviceInfo.encryption ?? 0,
-            address: self.deviceInfo.address,
-            port: self.deviceInfo.port,
+    func toNVRCamera() -> NVRCamera? {
+        // Skip cameras without device info (like "Compose" type cameras)
+        guard let deviceInfo = self.deviceInfo,
+              let deviceID = self.deviceID,
+              let enable = self.enable else {
+            return nil
+        }
+        
+        let nvrDeviceInfo = DeviceInfo(
+            enable: deviceInfo.enable,
+            encryptStream: deviceInfo.encryption,
+            address: deviceInfo.address,
+            port: deviceInfo.port,
             usePreSecret: 0,
-            userName: self.deviceInfo.userName ?? "",
+            userName: deviceInfo.userName,
             password: "",
-            protocolType: self.deviceInfo.protocolType ?? "Unknown",
-            videoInputChannels: self.deviceInfo.videoInputChannels ?? 0,
-            audioInputChannels: self.deviceInfo.audioInputChannels ?? 0,
-            deviceClass: self.deviceInfo.deviceClass ?? "",
-            deviceType: self.deviceInfo.deviceType ?? "Unknown",
-            httpPort: self.deviceInfo.httpPort,
-            httpsPort: self.deviceInfo.httpsPort,
-            rtspPort: self.deviceInfo.rtspPort ?? 554,
-            name: self.deviceInfo.name ?? "Unknown Device",
+            protocolType: deviceInfo.protocolType,
+            videoInputChannels: deviceInfo.videoInputChannels,
+            audioInputChannels: deviceInfo.audioInputChannels,
+            deviceClass: deviceInfo.deviceClass,
+            deviceType: deviceInfo.deviceType,
+            httpPort: deviceInfo.httpPort,
+            httpsPort: deviceInfo.httpsPort,
+            rtspPort: deviceInfo.rtspPort,
+            name: deviceInfo.name,
             machineAddress: "",
-            serialNo: self.deviceInfo.serialNo ?? "",
+            serialNo: deviceInfo.serialNo,
             vendorAbbr: "",
             hardID: "",
             softwareVersion: "",
             activationTime: "",
             nodeType: "",
-            mac: self.deviceInfo.mac ?? "",
+            mac: deviceInfo.mac,
             oemVendor: ""
         )
         
         return NVRCamera(
             controlID: "Channel\(self.uniqueChannel)",
-            name: self.deviceInfo.name ?? "Camera \(self.uniqueChannel + 1)",
-            enable: self.enable,
-            deviceID: self.deviceID,
+            name: deviceInfo.name.isEmpty ? "Camera \(self.uniqueChannel + 1)" : deviceInfo.name,
+            enable: enable,
+            deviceID: deviceID,
             type: self.type,
             videoStream: self.videoStream ?? "Main",
             uniqueChannel: self.uniqueChannel,
-            deviceInfo: deviceInfo
+            deviceInfo: nvrDeviceInfo
         )
     }
 }

@@ -220,7 +220,7 @@ struct NVRCameraCardView: View {
                 
                 Spacer()
                 
-                Text(camera.deviceInfo.deviceType)
+                Text(camera.deviceInfo.deviceType.isEmpty ? "Unknown Device" : camera.deviceInfo.deviceType)
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -293,28 +293,28 @@ struct NVRCameraDetailView: View {
                 HStack {
                     Text("Device Type")
                     Spacer()
-                    Text(camera.deviceInfo.deviceType)
+                    Text(camera.deviceInfo.deviceType.isEmpty ? "Unknown" : camera.deviceInfo.deviceType)
                         .foregroundColor(.secondary)
                 }
                 
                 HStack {
                     Text("Serial Number")
                     Spacer()
-                    Text(camera.deviceInfo.serialNo)
+                    Text(camera.deviceInfo.serialNo.isEmpty ? "N/A" : camera.deviceInfo.serialNo)
                         .foregroundColor(.secondary)
                 }
                 
                 HStack {
                     Text("MAC Address")
                     Spacer()
-                    Text(camera.deviceInfo.mac)
+                    Text(camera.deviceInfo.mac.isEmpty ? "N/A" : camera.deviceInfo.mac)
                         .foregroundColor(.secondary)
                 }
                 
                 HStack {
                     Text("Firmware Version")
                     Spacer()
-                    Text(camera.deviceInfo.softwareVersion)
+                    Text(camera.deviceInfo.softwareVersion.isEmpty ? "N/A" : camera.deviceInfo.softwareVersion)
                         .foregroundColor(.secondary)
                 }
             }

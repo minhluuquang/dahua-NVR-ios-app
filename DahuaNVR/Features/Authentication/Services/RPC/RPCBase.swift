@@ -134,7 +134,6 @@ class RPCBase {
     }
     
     func sendDirectResponse<T: Codable>(method: String, params: [String: AnyJSON]? = nil, responseType: T.Type, useLoginEndpoint: Bool = false, includeSession: Bool = false) async throws -> T {
-        let startTime = Date()
         let request: RPCRequest
         
         if useLoginEndpoint && !includeSession {
@@ -158,42 +157,14 @@ class RPCBase {
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        #if DEBUG
-        logger.debug("🚀 RPC Call: \(method)")
-        logger.debug("   → Full URL: \(url.absoluteString)")
-        logger.debug("   → Endpoint: \(baseURL)\(endpoint)")
-        logger.debug("   → Session ID: \(sessionID ?? "none")")
-        logger.debug("   → Use Login Endpoint: \(useLoginEndpoint)")
-        logger.debug("   → Include Session: \(includeSession)")
-        
-        if let params = params {
-            logger.debug("   → Parameters: \(params)")
-        }
-        #endif
         
         do {
             let requestData = try JSONEncoder().encode(request)
             urlRequest.httpBody = requestData
             
-            #if DEBUG
-            if let requestString = String(data: requestData, encoding: .utf8) {
-                logger.debug("RPC Request Body: \(requestString)")
-            }
-            #endif
             
-            let (data, response) = try await urlSession.data(for: urlRequest)
+            let (data, _) = try await urlSession.data(for: urlRequest)
             
-            #if DEBUG
-            let responseDuration = Date().timeIntervalSince(startTime)
-            if let httpResponse = response as? HTTPURLResponse {
-                logger.debug("✅ RPC Response: \(method)")
-                logger.debug("   → Status: \(httpResponse.statusCode)")
-                logger.debug("   → Duration: \(String(format: "%.3f", responseDuration))s")
-                if let responseString = String(data: data, encoding: .utf8) {
-                    logger.debug("   → Response: \(responseString)")
-                }
-            }
-            #endif
             
             // First try to decode as the target type directly
             do {
@@ -202,15 +173,8 @@ class RPCBase {
                 // For login responses that include session ID, extract and store it
                 if let loginResponse = directResponse as? LoginSuccessResponse {
                     sessionID = loginResponse.session
-                    #if DEBUG
-                    logger.debug("Stored session ID from direct response: \(loginResponse.session)")
-                    #endif
                 }
                 
-                #if DEBUG
-                let successDuration = Date().timeIntervalSince(startTime)
-                logger.debug("✅ RPC Success: \(method) completed in \(String(format: "%.3f", successDuration))s")
-                #endif
                 
                 return directResponse
                 
@@ -226,12 +190,10 @@ class RPCBase {
             
         } catch {
             #if DEBUG
-            let networkErrorDuration = Date().timeIntervalSince(startTime)
             logger.error("❌ RPC Network Error: \(method)")
             logger.error("   → Full URL: \(url.absoluteString)")
             logger.error("   → Error: \(error.localizedDescription)")
             logger.error("   → Error Type: \(type(of: error))")
-            logger.error("   → Duration: \(String(format: "%.3f", networkErrorDuration))s")
             
             // Log the request that failed
             if let requestData = urlRequest.httpBody,
@@ -250,7 +212,6 @@ class RPCBase {
     }
 
     func send<T: Codable>(method: String, params: [String: AnyJSON]? = nil, responseType: T.Type, useLoginEndpoint: Bool = false, includeSession: Bool = false) async throws -> RPCResponse<T> {
-        let startTime = Date()
         let request: RPCRequest
         
         if useLoginEndpoint && !includeSession {
@@ -274,42 +235,14 @@ class RPCBase {
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        #if DEBUG
-        logger.debug("🚀 RPC Call: \(method)")
-        logger.debug("   → Full URL: \(url.absoluteString)")
-        logger.debug("   → Endpoint: \(baseURL)\(endpoint)")
-        logger.debug("   → Session ID: \(sessionID ?? "none")")
-        logger.debug("   → Use Login Endpoint: \(useLoginEndpoint)")
-        logger.debug("   → Include Session: \(includeSession)")
-        
-        if let params = params {
-            logger.debug("   → Parameters: \(params)")
-        }
-        #endif
         
         do {
             let requestData = try JSONEncoder().encode(request)
             urlRequest.httpBody = requestData
             
-            #if DEBUG
-            if let requestString = String(data: requestData, encoding: .utf8) {
-                logger.debug("RPC Request Body: \(requestString)")
-            }
-            #endif
             
-            let (data, response) = try await urlSession.data(for: urlRequest)
+            let (data, _) = try await urlSession.data(for: urlRequest)
             
-            #if DEBUG
-            let responseDuration = Date().timeIntervalSince(startTime)
-            if let httpResponse = response as? HTTPURLResponse {
-                logger.debug("✅ RPC Response: \(method)")
-                logger.debug("   → Status: \(httpResponse.statusCode)")
-                logger.debug("   → Duration: \(String(format: "%.3f", responseDuration))s")
-                if let responseString = String(data: data, encoding: .utf8) {
-                    logger.debug("   → Response: \(responseString)")
-                }
-            }
-            #endif
             
             
             let rpcResponse: RPCResponse<T>
@@ -328,47 +261,33 @@ class RPCBase {
             // Store session ID from login response
             if let session = rpcResponse.session {
                 sessionID = session
-                #if DEBUG
-                logger.debug("Stored session ID: \(session)")
-                #endif
             }
             
             if let error = rpcResponse.error {
                 #if DEBUG
-                let errorDuration = Date().timeIntervalSince(startTime)
                 logger.error("❌ RPC Error: \(method)")
                 logger.error("   → Code: \(error.code)")
                 logger.error("   → Message: \(error.message)")
-                logger.error("   → Duration: \(String(format: "%.3f", errorDuration))s")
                 #endif
                 
                 // For login challenge errors (268632079 or 401), return the response for the first login
                 // so the caller can access the challenge params
                 if useLoginEndpoint && !includeSession && (error.code == 268632079 || error.code == 401) {
                     // First login - challenge is expected
-                    #if DEBUG
-                    logger.debug("🔓 Login challenge received (expected for first login)")
-                    #endif
                     return rpcResponse
                 }
                 
                 throw error
             }
             
-            #if DEBUG
-            let successDuration = Date().timeIntervalSince(startTime)
-            logger.debug("✅ RPC Success: \(method) completed in \(String(format: "%.3f", successDuration))s")
-            #endif
             
             return rpcResponse
         } catch {
             #if DEBUG
-            let networkErrorDuration = Date().timeIntervalSince(startTime)
             logger.error("❌ RPC Network Error: \(method)")
             logger.error("   → Full URL: \(url.absoluteString)")
             logger.error("   → Error: \(error.localizedDescription)")
             logger.error("   → Error Type: \(type(of: error))")
-            logger.error("   → Duration: \(String(format: "%.3f", networkErrorDuration))s")
             
             // Log the request that failed
             if let requestData = urlRequest.httpBody,
@@ -391,13 +310,6 @@ class RPCBase {
         if let username = username {
             self.username = username
         }
-        
-        #if DEBUG
-        logger.debug("📋 Session established: \(id)")
-        if let username = self.username {
-            logger.debug("   → Username: \(username)")
-        }
-        #endif
     }
     
     func setupSession() async throws {
@@ -405,20 +317,12 @@ class RPCBase {
         sessionID = nil
         username = nil
         requestID = 0
-        
-        #if DEBUG
-        logger.debug("🔧 Setting up RPC session for \(baseURL)")
-        #endif
     }
     
     func clearSession() {
         sessionID = nil
         username = nil
         requestID = 0
-        
-        #if DEBUG
-        logger.debug("🧹 Cleared RPC session")
-        #endif
     }
     
     var hasActiveSession: Bool {
@@ -434,19 +338,6 @@ class RPCBase {
         payload: Codable,
         responseType: T.Type
     ) async throws -> T {
-        #if DEBUG
-        logger.debug("🔐 Encrypted RPC Call: \(method)")
-        
-        // Log the original payload for debugging
-        do {
-            let payloadData = try JSONEncoder().encode(AnyEncodable(payload))
-            if let payloadString = String(data: payloadData, encoding: .utf8) {
-                logger.debug("   → Original payload: \(payloadString)")
-            }
-        } catch {
-            logger.debug("   → Could not serialize payload for logging: \(error.localizedDescription)")
-        }
-        #endif
         
         guard hasActiveSession else {
             throw RPCError(code: -1, message: "No active RPC session for encrypted request")
@@ -461,13 +352,6 @@ class RPCBase {
             payload: payload,
             serverCiphers: ["RPAC-256"]
         )
-        
-        #if DEBUG
-        logger.debug("   → Payload encrypted successfully")
-        logger.debug("   → Cipher: \(encryptedPacket.cipher)")
-        logger.debug("   → Salt: \(encryptedPacket.salt)")
-        logger.debug("   → Encrypted content length: \(encryptedPacket.content.count) characters")
-        #endif
         
         let params: [String: AnyJSON] = [
             "salt": AnyJSON(encryptedPacket.salt),
@@ -485,19 +369,11 @@ class RPCBase {
             throw RPCError(code: -1, message: "No encrypted data received from RPC")
         }
         
-        #if DEBUG
-        logger.debug("   → Encrypted response received")
-        #endif
-        
         // Decrypt response with the same key
         let decryptedData = try decryptResponse(
             encryptedContent: responseData.content,
             key: symmetricKey
         )
-        
-        #if DEBUG
-        logger.debug("   → Response decrypted successfully")
-        #endif
         
         // Key automatically deallocated when function exits
         return try JSONDecoder().decode(T.self, from: decryptedData)
@@ -506,27 +382,14 @@ class RPCBase {
     private func decryptResponse(encryptedContent: String, key: Data) throws -> Data {
         let profile = EncryptionProfile.RPAC
         
-        #if DEBUG
-        logger.debug("🔓 Decrypting MultiSec response...")
-        logger.debug("   → Encrypted content length: \(encryptedContent.count) characters")
-        logger.debug("   → Key size: \(key.count) bytes")
-        logger.debug("   → Profile: \(profile.rawValue)")
-        #endif
-        
         // Ensure key is proper length
         let paddedKey: Data
         if key.count < profile.keyLength {
             var keyData = key
             keyData.append(Data(repeating: 0, count: profile.keyLength - key.count))
             paddedKey = keyData.prefix(profile.keyLength)
-            #if DEBUG
-            logger.debug("   → Key padded from \(key.count) to \(paddedKey.count) bytes")
-            #endif
         } else {
             paddedKey = key.prefix(profile.keyLength)
-            #if DEBUG
-            logger.debug("   → Key truncated from \(key.count) to \(paddedKey.count) bytes")
-            #endif
         }
         
         let decryptedData = try EncryptionUtility.decryptWithAES(
@@ -535,42 +398,11 @@ class RPCBase {
             profile: profile
         )
         
-        #if DEBUG
-        logger.debug("✅ MultiSec response decrypted successfully")
-        logger.debug("   → Decrypted data size: \(decryptedData.count) bytes")
-        
-        // Log raw decrypted data as hex for debugging
-        let hexString = decryptedData.map { String(format: "%02x", $0) }.joined()
-        logger.debug("   → Raw decrypted data (hex): \(hexString)")
-        
-        // Try to decode as UTF-8 string for readability
-        if let decodedString = String(data: decryptedData, encoding: .utf8) {
-            logger.debug("   → Decrypted data as UTF-8 string:")
-            logger.debug("   → \(decodedString)")
-        } else {
-            logger.debug("   → Could not decode as UTF-8 string")
-        }
-        
-        // Try to parse as JSON to validate structure
-        do {
-            let jsonObject = try JSONSerialization.jsonObject(with: decryptedData, options: [])
-            logger.debug("   → JSON structure is valid")
-            if let prettyData = try? JSONSerialization.data(withJSONObject: jsonObject, options: .prettyPrinted),
-               let prettyString = String(data: prettyData, encoding: .utf8) {
-                logger.debug("   → Pretty-printed JSON:")
-                logger.debug("\(prettyString)")
-            }
-        } catch {
-            logger.debug("   → JSON parsing failed: \(error.localizedDescription)")
-        }
-        #endif
-        
         return decryptedData
     }
     
     // Special method for OutsideCmd endpoint
     func sendOutsideCmd<T: Codable>(method: String, params: [String: AnyJSON]? = nil, responseType: T.Type) async throws -> RPCResponse<T> {
-        let startTime = Date()
         let request = RPCRequest(method: method, params: params, id: nextRequestID())
         
         let url = URL(string: "\(baseURL)/OutsideCmd")!
@@ -580,46 +412,23 @@ class RPCBase {
         urlRequest.setValue("application/json, text/javascript, */*; q=0.01", forHTTPHeaderField: "Accept")
         urlRequest.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
         
-        #if DEBUG
-        logger.debug("🚀 OutsideCmd RPC Call: \(method)")
-        logger.debug("   → Full URL: \(url.absoluteString)")
-        logger.debug("   → Request ID: \(request.id ?? 0)")
-        #endif
         
         do {
             let requestData = try JSONEncoder().encode(request)
             urlRequest.httpBody = requestData
             
-            #if DEBUG
-            if let requestString = String(data: requestData, encoding: .utf8) {
-                logger.debug("OutsideCmd Request Body: \(requestString)")
-            }
-            #endif
             
-            let (data, response) = try await urlSession.data(for: urlRequest)
+            let (data, _) = try await urlSession.data(for: urlRequest)
             
-            #if DEBUG
-            let responseDuration = Date().timeIntervalSince(startTime)
-            if let httpResponse = response as? HTTPURLResponse {
-                logger.debug("✅ OutsideCmd Response: \(method)")
-                logger.debug("   → Status: \(httpResponse.statusCode)")
-                logger.debug("   → Duration: \(String(format: "%.3f", responseDuration))s")
-                if let responseString = String(data: data, encoding: .utf8) {
-                    logger.debug("   → Response: \(responseString)")
-                }
-            }
-            #endif
             
             let rpcResponse = try JSONDecoder().decode(RPCResponse<T>.self, from: data)
             return rpcResponse
             
         } catch {
             #if DEBUG
-            let networkErrorDuration = Date().timeIntervalSince(startTime)
             logger.error("❌ OutsideCmd Network Error: \(method)")
             logger.error("   → Full URL: \(url.absoluteString)")
             logger.error("   → Error: \(error.localizedDescription)")
-            logger.error("   → Duration: \(String(format: "%.3f", networkErrorDuration))s")
             #endif
             throw error
         }
@@ -627,7 +436,6 @@ class RPCBase {
     
     // Special method for OutsideCmd endpoint that decodes directly (not wrapped in RPCResponse)
     func sendOutsideCmdDirect<T: Codable>(method: String, params: [String: AnyJSON]? = nil, responseType: T.Type) async throws -> T {
-        let startTime = Date()
         let request = RPCRequest(method: method, params: params, id: nextRequestID())
         
         let url = URL(string: "\(baseURL)/OutsideCmd")!
@@ -637,46 +445,23 @@ class RPCBase {
         urlRequest.setValue("application/json, text/javascript, */*; q=0.01", forHTTPHeaderField: "Accept")
         urlRequest.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
         
-        #if DEBUG
-        logger.debug("🚀 OutsideCmd Direct Call: \(method)")
-        logger.debug("   → Full URL: \(url.absoluteString)")
-        logger.debug("   → Request ID: \(request.id ?? 0)")
-        #endif
         
         do {
             let requestData = try JSONEncoder().encode(request)
             urlRequest.httpBody = requestData
             
-            #if DEBUG
-            if let requestString = String(data: requestData, encoding: .utf8) {
-                logger.debug("OutsideCmd Direct Request Body: \(requestString)")
-            }
-            #endif
             
-            let (data, response) = try await urlSession.data(for: urlRequest)
+            let (data, _) = try await urlSession.data(for: urlRequest)
             
-            #if DEBUG
-            let responseDuration = Date().timeIntervalSince(startTime)
-            if let httpResponse = response as? HTTPURLResponse {
-                logger.debug("✅ OutsideCmd Direct Response: \(method)")
-                logger.debug("   → Status: \(httpResponse.statusCode)")
-                logger.debug("   → Duration: \(String(format: "%.3f", responseDuration))s")
-                if let responseString = String(data: data, encoding: .utf8) {
-                    logger.debug("   → Response: \(responseString)")
-                }
-            }
-            #endif
             
             let directResponse = try JSONDecoder().decode(T.self, from: data)
             return directResponse
             
         } catch {
             #if DEBUG
-            let networkErrorDuration = Date().timeIntervalSince(startTime)
             logger.error("❌ OutsideCmd Direct Network Error: \(method)")
             logger.error("   → Full URL: \(url.absoluteString)")
             logger.error("   → Error: \(error.localizedDescription)")
-            logger.error("   → Duration: \(String(format: "%.3f", networkErrorDuration))s")
             #endif
             throw error
         }
