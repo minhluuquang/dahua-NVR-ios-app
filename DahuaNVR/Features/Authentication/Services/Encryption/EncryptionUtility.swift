@@ -16,6 +16,11 @@ public final class EncryptionUtility {
     private static let clientProfiles: [EncryptionProfile] = [.RPAC, .AES]
     
     public static func encrypt(payload: Encodable, serverCiphers: [String]) throws -> EncryptedPacket {
+        let (packet, _) = try encryptWithKey(payload: payload, serverCiphers: serverCiphers)
+        return packet
+    }
+    
+    public static func encryptWithKey(payload: Encodable, serverCiphers: [String]) throws -> (packet: EncryptedPacket, key: Data) {
         logger.debug("Starting encryption process")
         logger.debug("Server ciphers: \(serverCiphers.joined(separator: ", "))")
         
@@ -55,7 +60,7 @@ public final class EncryptionUtility {
         )
         
         logger.debug("Encryption completed successfully")
-        return packet
+        return (packet: packet, key: symmetricKey)
     }
     
     static func selectProfile(serverCiphers: [String]) throws -> EncryptionProfile {

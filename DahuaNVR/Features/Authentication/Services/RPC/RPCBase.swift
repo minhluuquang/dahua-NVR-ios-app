@@ -1,5 +1,17 @@
 import Foundation
 
+struct AnyEncodable: Encodable {
+    private let _encode: (Encoder) throws -> Void
+    
+    init<T: Encodable>(_ wrapped: T) {
+        _encode = wrapped.encode
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        try _encode(encoder)
+    }
+}
+
 struct RPCRequest: Codable {
     let method: String
     let params: [String: AnyJSON]?
@@ -82,6 +94,21 @@ struct RPCResponse<T: Codable>: Codable {
 struct RPCError: Codable, Error {
     let code: Int
     let message: String
+}
+
+struct SystemMultiSecResponse: Codable {
+    let content: String
+    
+    private enum CodingKeys: String, CodingKey {
+        case content
+    }
+}
+
+struct SystemMultiSecRawResponse: Codable {
+    let result: Bool
+    let params: SystemMultiSecResponse?
+    let id: Int?
+    let session: String?
 }
 
 
@@ -400,6 +427,145 @@ class RPCBase {
     
     var currentSessionID: String? {
         return sessionID
+    }
+    
+    func sendEncrypted<T: Codable>(
+        method: String,
+        payload: Codable,
+        responseType: T.Type
+    ) async throws -> T {
+        #if DEBUG
+        logger.debug("🔐 Encrypted RPC Call: \(method)")
+        
+        // Log the original payload for debugging
+        do {
+            let payloadData = try JSONEncoder().encode(AnyEncodable(payload))
+            if let payloadString = String(data: payloadData, encoding: .utf8) {
+                logger.debug("   → Original payload: \(payloadString)")
+            }
+        } catch {
+            logger.debug("   → Could not serialize payload for logging: \(error.localizedDescription)")
+        }
+        #endif
+        
+        guard hasActiveSession else {
+            throw RPCError(code: -1, message: "No active RPC session for encrypted request")
+        }
+        
+        guard currentSessionID != nil else {
+            throw RPCError(code: -1, message: "No valid session ID available for encrypted request")
+        }
+        
+        // Generate fresh key for this request only
+        let (encryptedPacket, symmetricKey) = try EncryptionUtility.encryptWithKey(
+            payload: payload,
+            serverCiphers: ["RPAC-256"]
+        )
+        
+        #if DEBUG
+        logger.debug("   → Payload encrypted successfully")
+        logger.debug("   → Cipher: \(encryptedPacket.cipher)")
+        logger.debug("   → Salt: \(encryptedPacket.salt)")
+        logger.debug("   → Encrypted content length: \(encryptedPacket.content.count) characters")
+        #endif
+        
+        let params: [String: AnyJSON] = [
+            "salt": AnyJSON(encryptedPacket.salt),
+            "cipher": AnyJSON(encryptedPacket.cipher),
+            "content": AnyJSON(encryptedPacket.content)
+        ]
+        
+        let response: SystemMultiSecRawResponse = try await sendDirectResponse(
+            method: "system.multiSec",
+            params: params,
+            responseType: SystemMultiSecRawResponse.self
+        )
+        
+        guard let responseData = response.params else {
+            throw RPCError(code: -1, message: "No encrypted data received from RPC")
+        }
+        
+        #if DEBUG
+        logger.debug("   → Encrypted response received")
+        #endif
+        
+        // Decrypt response with the same key
+        let decryptedData = try decryptResponse(
+            encryptedContent: responseData.content,
+            key: symmetricKey
+        )
+        
+        #if DEBUG
+        logger.debug("   → Response decrypted successfully")
+        #endif
+        
+        // Key automatically deallocated when function exits
+        return try JSONDecoder().decode(T.self, from: decryptedData)
+    }
+    
+    private func decryptResponse(encryptedContent: String, key: Data) throws -> Data {
+        let profile = EncryptionProfile.RPAC
+        
+        #if DEBUG
+        logger.debug("🔓 Decrypting MultiSec response...")
+        logger.debug("   → Encrypted content length: \(encryptedContent.count) characters")
+        logger.debug("   → Key size: \(key.count) bytes")
+        logger.debug("   → Profile: \(profile.rawValue)")
+        #endif
+        
+        // Ensure key is proper length
+        let paddedKey: Data
+        if key.count < profile.keyLength {
+            var keyData = key
+            keyData.append(Data(repeating: 0, count: profile.keyLength - key.count))
+            paddedKey = keyData.prefix(profile.keyLength)
+            #if DEBUG
+            logger.debug("   → Key padded from \(key.count) to \(paddedKey.count) bytes")
+            #endif
+        } else {
+            paddedKey = key.prefix(profile.keyLength)
+            #if DEBUG
+            logger.debug("   → Key truncated from \(key.count) to \(paddedKey.count) bytes")
+            #endif
+        }
+        
+        let decryptedData = try EncryptionUtility.decryptWithAES(
+            encryptedString: encryptedContent,
+            key: paddedKey,
+            profile: profile
+        )
+        
+        #if DEBUG
+        logger.debug("✅ MultiSec response decrypted successfully")
+        logger.debug("   → Decrypted data size: \(decryptedData.count) bytes")
+        
+        // Log raw decrypted data as hex for debugging
+        let hexString = decryptedData.map { String(format: "%02x", $0) }.joined()
+        logger.debug("   → Raw decrypted data (hex): \(hexString)")
+        
+        // Try to decode as UTF-8 string for readability
+        if let decodedString = String(data: decryptedData, encoding: .utf8) {
+            logger.debug("   → Decrypted data as UTF-8 string:")
+            logger.debug("   → \(decodedString)")
+        } else {
+            logger.debug("   → Could not decode as UTF-8 string")
+        }
+        
+        // Try to parse as JSON to validate structure
+        do {
+            let jsonObject = try JSONSerialization.jsonObject(with: decryptedData, options: [])
+            logger.debug("   → JSON structure is valid")
+            if let prettyData = try? JSONSerialization.data(withJSONObject: jsonObject, options: .prettyPrinted),
+               let prettyString = String(data: prettyData, encoding: .utf8) {
+                logger.debug("   → Pretty-printed JSON:")
+                logger.debug("\(prettyString)")
+            }
+        } catch {
+            logger.debug("   → JSON parsing failed: \(error.localizedDescription)")
+        }
+        #endif
+        
+        return decryptedData
     }
     
     // Special method for OutsideCmd endpoint

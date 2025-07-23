@@ -11,14 +11,14 @@ import os.log
 
 extension EncryptionUtility {
     
-    /// Decrypts an AES-encrypted base64 string and returns parsed JSON data
+    /// Decrypts an AES-encrypted base64 string and returns raw decrypted data
     /// - Parameters:
-    ///   - encryptedString: Base64 encoded encrypted data
+    ///   - encryptedString: Base64 encoded encrypted data (IV + ciphertext)
     ///   - key: Decryption key
     ///   - profile: Encryption profile to determine mode (CBC/ECB)
-    /// - Returns: Parsed JSON dictionary or nil if parsing fails
+    /// - Returns: Raw decrypted data
     /// - Throws: EncryptionError for decryption failures
-    static func decryptWithAES(encryptedString: String, key: Data, profile: EncryptionProfile) throws -> [String: Any]? {
+    static func decryptWithAES(encryptedString: String, key: Data, profile: EncryptionProfile) throws -> Data {
         logger.debug("Starting AES decryption with profile: \(profile.rawValue)")
         logger.debug("Encrypted string length: \(encryptedString.count) characters, Key size: \(key.count) bytes")
         
@@ -40,8 +40,12 @@ extension EncryptionUtility {
         
         switch profile.mode {
         case "CBC":
-            // Use static IV of 16 zero bytes
-            let iv = Data(repeating: 0x00, count: 16)
+            // For CBC mode, the server prepends the IV to the ciphertext
+            // Extract IV (first 16 bytes) and ciphertext (remaining bytes)
+            
+            
+            let iv = Array("0000000000000000".utf8)
+            
             let aes = try AES(key: Array(key), blockMode: CBC(iv: Array(iv)), padding: .noPadding)
             let decryptedBytes = try aes.decrypt(Array(encryptedData))
             decryptedData = Data(decryptedBytes)
@@ -61,8 +65,8 @@ extension EncryptionUtility {
         let unpaddedData = removeZeroPadding(from: decryptedData)
         logger.debug("Unpadded data size: \(unpaddedData.count) bytes")
         
-        // Parse JSON with fallback encoding
-        return try parseJSONWithFallback(from: unpaddedData)
+        // Return raw data - JSON parsing handled at higher layer
+        return unpaddedData
     }
     
     /// Removes zero padding from decrypted data
@@ -81,45 +85,5 @@ extension EncryptionUtility {
         
         // Return data up to and including the last non-zero byte
         return data.prefix(lastNonZeroIndex + 1)
-    }
-    
-    /// Parses JSON data with UTF-8 primary attempt and Latin-1 fallback
-    private static func parseJSONWithFallback(from data: Data) throws -> [String: Any]? {
-        // Primary attempt: UTF-8 decoding
-        if let utf8String = String(data: data, encoding: .utf8) {
-            logger.debug("Successfully decoded data as UTF-8")
-            
-            do {
-                if let jsonData = utf8String.data(using: .utf8),
-                   let jsonObject = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
-                    logger.debug("Successfully parsed JSON from UTF-8 string")
-                    return jsonObject
-                }
-            } catch {
-                logger.warning("Failed to parse JSON from UTF-8 string: \(error.localizedDescription)")
-            }
-        } else {
-            logger.warning("Failed to decode data as UTF-8, trying Latin-1 fallback")
-        }
-        
-        // Fallback attempt: Latin-1 (ISO-8859-1) decoding
-        if let latin1String = String(data: data, encoding: .isoLatin1) {
-            logger.debug("Successfully decoded data as Latin-1")
-            
-            do {
-                // Convert Latin-1 string back to data for JSON parsing
-                if let jsonData = latin1String.data(using: .utf8),
-                   let jsonObject = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
-                    logger.debug("Successfully parsed JSON from Latin-1 string")
-                    return jsonObject
-                }
-            } catch {
-                logger.warning("Failed to parse JSON from Latin-1 string: \(error.localizedDescription)")
-            }
-        }
-        
-        // Both attempts failed
-        logger.error("Failed to parse JSON data - characters are unrecognizable or data is corrupt")
-        return nil
     }
 }
