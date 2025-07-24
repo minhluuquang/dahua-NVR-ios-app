@@ -80,3 +80,55 @@ struct DeviceInfo: Codable {
         case oemVendor = "OEMVendor"
     }
 }
+
+// MARK: - Conversion Extensions for RPC Operations
+
+extension NVRCamera {
+    func toCameraPayload(withModifiedAddress newAddress: String? = nil) -> [String: Any] {
+        let addressToUse = newAddress ?? self.deviceInfo.address
+        
+        return [
+            "Channel": self.uniqueChannel,
+            "DeviceID": self.deviceID,
+            "DeviceInfo": [
+                "Address": addressToUse,
+                "AudioInputChannels": self.deviceInfo.audioInputChannels,
+                "DeviceClass": self.deviceInfo.deviceClass,
+                "DeviceType": self.deviceInfo.deviceType,
+                "Enable": self.deviceInfo.enable,
+                "Encryption": self.deviceInfo.encryptStream,
+                "HttpPort": self.deviceInfo.httpPort,
+                "HttpsPort": self.deviceInfo.httpsPort,
+                "Mac": self.deviceInfo.mac,
+                "Name": self.deviceInfo.name,
+                "PoE": false,
+                "PoEPort": 0,
+                "Port": self.deviceInfo.port,
+                "ProtocolType": self.deviceInfo.protocolType,
+                "RtspPort": self.deviceInfo.rtspPort,
+                "SerialNo": self.deviceInfo.serialNo,
+                "UserName": self.deviceInfo.userName,
+                "VideoInputChannels": self.deviceInfo.videoInputChannels,
+                "VideoInputs": [
+                    [
+                        "BufDelay": 160,
+                        "Enable": true,
+                        "ExtraStreamUrl": "",
+                        "MainStreamUrl": "",
+                        "Name": "",
+                        "ServiceType": "AUTO"
+                    ]
+                ],
+                "Password": "",
+                "LoginType": 0,
+                "b_isMultiVideoSensor": false
+            ],
+            "Enable": self.enable,
+            "Type": self.type,
+            "UniqueChannel": self.uniqueChannel,
+            "VideoStandard": "PAL",
+            "VideoStream": self.videoStream,
+            "showStatus": self.showStatus ?? "Unknown"
+        ]
+    }
+}

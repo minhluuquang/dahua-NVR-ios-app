@@ -9,30 +9,58 @@ class CameraStore: ObservableObject {
     
     private let logger = Logger(subsystem: "com.minhlq.DahuaNVR", category: "CameraStore")
     private var statusPoller: CameraStatusPoller?
+    private var currentFetchTask: Task<Void, Never>?
     
+    /// Single method for all camera refresh scenarios
+    func refresh() async {
+        // Cancel any in-flight request
+        currentFetchTask?.cancel()
+        
+        // Create new fetch task
+        currentFetchTask = Task { [weak self] in
+            guard let self = self else { return }
+            
+            // Update UI state
+            self.isLoading = true
+            self.errorMessage = nil
+            
+            do {
+                // Check if we have active connection
+                guard let rpcService = AuthenticationManager.shared.rpcService,
+                      rpcService.hasActiveSession else {
+                    self.errorMessage = "No active RPC connection to NVR system."
+                    self.isLoading = false
+                    return
+                }
+                
+                // Fetch cameras (will throw if cancelled)
+                let fetchedCameras = try await rpcService.camera.getAllCameras()
+                
+                // Only update if not cancelled
+                if !Task.isCancelled {
+                    self.cameras = fetchedCameras
+                }
+                
+            } catch {
+                // Only show error if not cancelled
+                if !Task.isCancelled {
+                    self.errorMessage = "Failed to load cameras: \(error.localizedDescription)"
+                }
+            }
+            
+            // Always clear loading state if not cancelled
+            if !Task.isCancelled {
+                self.isLoading = false
+            }
+        }
+        
+        // Await completion
+        await currentFetchTask?.value
+    }
+    
+    // Keep old method name for compatibility, just forwards to refresh
     func fetchCamerasRPC() async {
-        guard !isLoading else { return }
-        
-        isLoading = true
-        errorMessage = nil
-        
-        guard let rpcService = AuthenticationManager.shared.rpcService,
-              rpcService.hasActiveSession else {
-            isLoading = false
-            errorMessage = "No active RPC connection to NVR system."
-            return
-        }
-        
-        do {
-            let fetchedCameras = try await rpcService.camera.getAllCameras()
-            guard isLoading else { return }
-            cameras = fetchedCameras
-            isLoading = false
-        } catch {
-            guard isLoading else { return }
-            isLoading = false
-            errorMessage = "Failed to load cameras: \(error.localizedDescription)"
-        }
+        await refresh()
     }
     
     func updateCamera(cameraData: [String: Any]) async throws {
@@ -70,7 +98,20 @@ class CameraStore: ObservableObject {
     }
     
     func refreshCameraStatus() async {
-        await fetchCamerasRPC()
+        await refresh()
+    }
+    
+    func refreshCameraStatusWithDelay(delay: TimeInterval = 3.0) async {
+        #if DEBUG
+        logger.debug("📦 [CameraStore] Waiting \(delay) seconds before refreshing camera status...")
+        #endif
+        
+        try? await Task.sleep(for: .seconds(delay))
+        await refresh()
+        
+        #if DEBUG
+        logger.debug("📦 [CameraStore] Camera status refreshed after delay")
+        #endif
     }
     
     func findCamera(by id: UUID) -> NVRCamera? {
@@ -119,6 +160,10 @@ class CameraStore: ObservableObject {
     // MARK: - Cleanup
     
     deinit {
+        // Cancel any ongoing fetch
+        currentFetchTask?.cancel()
+        
+        // Stop status polling
         if let poller = statusPoller {
             Task {
                 await poller.stopAllPolling()

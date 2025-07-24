@@ -51,7 +51,7 @@ struct RPCDeviceInfo: Codable {
     let serialNo: String
     let userName: String
     let videoInputChannels: Int
-    let videoInputs: [RPCVideoInput]
+    @FailableDecodableArray var videoInputs: [RPCVideoInput]
     
     private enum CodingKeys: String, CodingKey {
         case address = "Address"
@@ -131,7 +131,7 @@ extension RPCCameraInfo {
             oemVendor: ""
         )
         
-        var camera = NVRCamera(
+        let camera = NVRCamera(
             controlID: "Channel\(self.uniqueChannel)",
             name: deviceInfo.name.isEmpty ? "Camera \(self.uniqueChannel + 1)" : deviceInfo.name,
             enable: enable,
@@ -143,5 +143,62 @@ extension RPCCameraInfo {
             showStatus: self.showStatus
         )
         return camera
+    }
+    
+    func toCameraPayload(withModifiedAddress newAddress: String? = nil) -> [String: Any]? {
+        guard let deviceInfo = self.deviceInfo,
+              let deviceID = self.deviceID,
+              let enable = self.enable else {
+            return nil
+        }
+        
+        let addressToUse = newAddress ?? deviceInfo.address
+        
+        // Convert VideoInputs to the expected format
+        let videoInputsData = deviceInfo.videoInputs.map { videoInput in
+            return [
+                "BufDelay": videoInput.bufDelay,
+                "Enable": videoInput.enable,
+                "ExtraStreamUrl": videoInput.extraStreamUrl,
+                "MainStreamUrl": videoInput.mainStreamUrl,
+                "Name": videoInput.name,
+                "ServiceType": videoInput.serviceType
+            ]
+        }
+        
+        return [
+            "Channel": self.channel ?? 0,
+            "DeviceID": deviceID,
+            "DeviceInfo": [
+                "Address": addressToUse,
+                "AudioInputChannels": deviceInfo.audioInputChannels,
+                "DeviceClass": deviceInfo.deviceClass,
+                "DeviceType": deviceInfo.deviceType,
+                "Enable": deviceInfo.enable,
+                "Encryption": deviceInfo.encryption,
+                "HttpPort": deviceInfo.httpPort,
+                "HttpsPort": deviceInfo.httpsPort,
+                "Mac": deviceInfo.mac,
+                "Name": deviceInfo.name,
+                "PoE": deviceInfo.poe,
+                "PoEPort": deviceInfo.poePort,
+                "Port": deviceInfo.port,
+                "ProtocolType": deviceInfo.protocolType,
+                "RtspPort": deviceInfo.rtspPort,
+                "SerialNo": deviceInfo.serialNo,
+                "UserName": deviceInfo.userName,
+                "VideoInputChannels": deviceInfo.videoInputChannels,
+                "VideoInputs": videoInputsData,
+                "Password": "",
+                "LoginType": 0,
+                "b_isMultiVideoSensor": false
+            ],
+            "Enable": enable,
+            "Type": self.type,
+            "UniqueChannel": self.uniqueChannel,
+            "VideoStandard": self.videoStandard ?? "PAL",
+            "VideoStream": self.videoStream ?? "Main",
+            "showStatus": self.showStatus ?? "Unknown"
+        ]
     }
 }

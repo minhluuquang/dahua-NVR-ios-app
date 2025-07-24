@@ -255,7 +255,7 @@ struct CameraEditSheet: View {
         // Use cameras from the store if available, otherwise fetch them
         let cameras: [NVRCamera]
         if store.cameras.isEmpty {
-            await store.fetchCamerasRPC()
+            await store.refresh()
             cameras = store.cameras
         } else {
             cameras = store.cameras

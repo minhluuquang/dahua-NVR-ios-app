@@ -69,8 +69,40 @@ class CameraRPC: RPCModule {
         return cameras
     }
     
-    func secSetCamera(cameraData: [String: Any]) async throws -> [NVRCamera] {
+    func getRawCameraData() async throws -> [RPCCameraInfo] {
         guard let sessionId = rpcBase.currentSessionID else {
+            throw RPCError(code: -1, message: "No valid session ID available for camera request")
+        }
+        
+        struct CameraRequest: Codable {
+            let method: String
+            let params: String?
+            let id: Int
+            let session: String
+        }
+        
+        let cameraRequest = CameraRequest(
+            method: "LogicDeviceManager.getCameraAll",
+            params: nil,
+            id: 1,
+            session: sessionId
+        )
+        
+        let responses = try await rpcBase.sendEncrypted(
+            method: "system.multiSec",
+            payload: [cameraRequest],
+            handler: GetAllCamerasHandler()
+        )
+        
+        guard let firstResponse = responses.first else {
+            throw RPCError(code: -1, message: "No camera data received from RPC")
+        }
+        
+        return firstResponse.params.camera
+    }
+    
+    func secSetCamera(cameraData: [String: Any]) async throws -> [NVRCamera] {
+        guard rpcBase.currentSessionID != nil else {
             throw RPCError(code: -1, message: "No valid session ID available for camera update request")
         }
         

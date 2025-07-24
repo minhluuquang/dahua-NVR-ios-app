@@ -26,7 +26,7 @@ struct CameraTabView: View {
 
                         Button("Retry") {
                             Task {
-                                await store.fetchCamerasRPC()
+                                await store.refresh()
                             }
                         }
                         .buttonStyle(.borderedProminent)
@@ -49,7 +49,7 @@ struct CameraTabView: View {
 
                         Button("Refresh") {
                             Task {
-                                await store.fetchCamerasRPC()
+                                await store.refresh()
                             }
                         }
                         .buttonStyle(.borderedProminent)
@@ -62,7 +62,7 @@ struct CameraTabView: View {
                         }
                     }
                     .refreshable {
-                        await store.fetchCamerasRPC()
+                        await store.refresh()
                     }
                 }
             }
@@ -71,7 +71,7 @@ struct CameraTabView: View {
         }
         .onAppear {
             Task {
-                await store.fetchCamerasRPC()  
+                await store.refresh()
             }
         }
     }

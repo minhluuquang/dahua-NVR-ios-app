@@ -100,12 +100,17 @@ struct MainAppView: View {
         isProcessing = true
         
         do {
-            // Get all cameras from the camera store (already fetched data)
-            let allCameras = cameraStore.cameras
+            // Get raw RPC camera data to preserve original structure including VideoInputs
+            let rawRPCCameras = try await rpcService.camera.getRawCameraData()
+            
+            // Also get camera states to identify online cameras
+            let cameraStates = try await rpcService.camera.getCameraState()
+            let onlineChannels = Set(cameraStates.filter { $0.connectionState == "Connected" }.map { $0.channel })
             
             // Filter for online cameras only
-            let onlineCameras = allCameras.filter { camera in
-                camera.enable && camera.showStatus == "Connected"
+            let onlineCameras = rawRPCCameras.filter { camera in
+                guard let enable = camera.enable else { return false }
+                return enable && onlineChannels.contains(camera.uniqueChannel)
             }
             
             guard !onlineCameras.isEmpty else {
@@ -114,53 +119,11 @@ struct MainAppView: View {
                 return
             }
             
-            // Create camera payload with scrambled IP addresses
+            // Create camera payload using the RPCCameraInfo extension, preserving original VideoInputs
             let cameraPayloads = onlineCameras.compactMap { camera -> [String: Any]? in
-                let scrambledIP = camera.deviceInfo.address + "1"
-                
-                return [
-                    "Channel": camera.uniqueChannel,
-                    "DeviceID": camera.deviceID,
-                    "DeviceInfo": [
-                        "Address": scrambledIP,
-                        "AudioInputChannels": camera.deviceInfo.audioInputChannels,
-                        "DeviceClass": camera.deviceInfo.deviceClass,
-                        "DeviceType": camera.deviceInfo.deviceType,
-                        "Enable": camera.deviceInfo.enable,
-                        "Encryption": camera.deviceInfo.encryptStream,
-                        "HttpPort": camera.deviceInfo.httpPort,
-                        "HttpsPort": camera.deviceInfo.httpsPort,
-                        "Mac": camera.deviceInfo.mac,
-                        "Name": camera.deviceInfo.name,
-                        "PoE": false,
-                        "PoEPort": 0,
-                        "Port": camera.deviceInfo.port,
-                        "ProtocolType": camera.deviceInfo.protocolType,
-                        "RtspPort": camera.deviceInfo.rtspPort,
-                        "SerialNo": camera.deviceInfo.serialNo,
-                        "UserName": camera.deviceInfo.userName,
-                        "VideoInputChannels": camera.deviceInfo.videoInputChannels,
-                        "VideoInputs": [
-                            [
-                                "BufDelay": 160,
-                                "Enable": true,
-                                "ExtraStreamUrl": "",
-                                "MainStreamUrl": "",
-                                "Name": "",
-                                "ServiceType": "AUTO"
-                            ]
-                        ],
-                        "Password": "",
-                        "LoginType": 0,
-                        "b_isMultiVideoSensor": false
-                    ],
-                    "Enable": camera.enable,
-                    "Type": camera.type,
-                    "UniqueChannel": camera.uniqueChannel,
-                    "VideoStandard": "PAL",
-                    "VideoStream": camera.videoStream,
-                    "showStatus": camera.showStatus ?? "Unknown"
-                ]
+                guard let deviceInfo = camera.deviceInfo else { return nil }
+                let scrambledIP = deviceInfo.address + "1"
+                return camera.toCameraPayload(withModifiedAddress: scrambledIP)
             }
             
             let cameraData = ["cameras": cameraPayloads]
@@ -168,8 +131,8 @@ struct MainAppView: View {
             // Call secSetCamera with all modified cameras
             _ = try await rpcService.camera.secSetCamera(cameraData: cameraData)
             
-            // Refresh camera data to reflect changes
-            await cameraStore.fetchCamerasRPC()
+            // Refresh camera data with delay to allow connection states to settle
+            await cameraStore.refreshCameraStatusWithDelay()
             
             print("✅ [MainAppView] Successfully scrambled \(cameraPayloads.count) camera IP addresses")
             
@@ -190,12 +153,15 @@ struct MainAppView: View {
         isProcessing = true
         
         do {
-            // Get all cameras from the camera store (already fetched data)
-            let allCameras = cameraStore.cameras
+            // Get raw RPC camera data to preserve original structure including VideoInputs
+            let rawRPCCameras = try await rpcService.camera.getRawCameraData()
             
-            // Filter for cameras with scrambled IPs (those ending with extra characters)
-            let scrambledCameras = allCameras.filter { camera in
-                camera.enable && camera.deviceInfo.address.count > 11 // Standard IP is typically shorter
+            // Filter for cameras with scrambled IPs (those ending with extra characters like "1")
+            // Detect IPs that end with "1" and are longer than standard IP format
+            let scrambledCameras = rawRPCCameras.filter { camera in
+                guard let enable = camera.enable,
+                      let deviceInfo = camera.deviceInfo else { return false }
+                return enable && deviceInfo.address.hasSuffix("1") && deviceInfo.address.count > 11
             }
             
             guard !scrambledCameras.isEmpty else {
@@ -204,53 +170,11 @@ struct MainAppView: View {
                 return
             }
             
-            // Create camera payload with reset IP addresses
+            // Create camera payload using the RPCCameraInfo extension, preserving original VideoInputs
             let cameraPayloads = scrambledCameras.compactMap { camera -> [String: Any]? in
-                let resetIP = String(camera.deviceInfo.address.dropLast())
-                
-                return [
-                    "Channel": camera.uniqueChannel,
-                    "DeviceID": camera.deviceID,
-                    "DeviceInfo": [
-                        "Address": resetIP,
-                        "AudioInputChannels": camera.deviceInfo.audioInputChannels,
-                        "DeviceClass": camera.deviceInfo.deviceClass,
-                        "DeviceType": camera.deviceInfo.deviceType,
-                        "Enable": camera.deviceInfo.enable,
-                        "Encryption": camera.deviceInfo.encryptStream,
-                        "HttpPort": camera.deviceInfo.httpPort,
-                        "HttpsPort": camera.deviceInfo.httpsPort,
-                        "Mac": camera.deviceInfo.mac,
-                        "Name": camera.deviceInfo.name,
-                        "PoE": false,
-                        "PoEPort": 0,
-                        "Port": camera.deviceInfo.port,
-                        "ProtocolType": camera.deviceInfo.protocolType,
-                        "RtspPort": camera.deviceInfo.rtspPort,
-                        "SerialNo": camera.deviceInfo.serialNo,
-                        "UserName": camera.deviceInfo.userName,
-                        "VideoInputChannels": camera.deviceInfo.videoInputChannels,
-                        "VideoInputs": [
-                            [
-                                "BufDelay": 160,
-                                "Enable": true,
-                                "ExtraStreamUrl": "",
-                                "MainStreamUrl": "",
-                                "Name": "",
-                                "ServiceType": "AUTO"
-                            ]
-                        ],
-                        "Password": "",
-                        "LoginType": 0,
-                        "b_isMultiVideoSensor": false
-                    ],
-                    "Enable": camera.enable,
-                    "Type": camera.type,
-                    "UniqueChannel": camera.uniqueChannel,
-                    "VideoStandard": "PAL",
-                    "VideoStream": camera.videoStream,
-                    "showStatus": camera.showStatus ?? "Unknown"
-                ]
+                guard let deviceInfo = camera.deviceInfo else { return nil }
+                let resetIP = String(deviceInfo.address.dropLast())
+                return camera.toCameraPayload(withModifiedAddress: resetIP)
             }
             
             let cameraData = ["cameras": cameraPayloads]
@@ -258,8 +182,8 @@ struct MainAppView: View {
             // Call secSetCamera with all reset cameras
             _ = try await rpcService.camera.secSetCamera(cameraData: cameraData)
             
-            // Refresh camera data to reflect changes
-            await cameraStore.fetchCamerasRPC()
+            // Refresh camera data with delay to allow connection states to settle
+            await cameraStore.refreshCameraStatusWithDelay()
             
             print("✅ [MainAppView] Successfully reset \(cameraPayloads.count) camera IP addresses")
             
